@@ -428,8 +428,6 @@
               <label>所屬診所</label>
               <select id="newBranch">
                 <option value="">請選擇</option>
-                <option>長安診所</option>
-                <option>板橋診所</option>
               </select>
             </div>
             <div>
@@ -552,8 +550,6 @@
             <label>新所屬診所</label>
             <select id="reassignBranch">
               <option value="">留空表示不更改</option>
-              <option>長安診所</option>
-              <option>板橋診所</option>
             </select>
 
             <input type="hidden" id="reassignPin" value="">
@@ -586,8 +582,6 @@
           </label>
           <div id="txBranchDisplay" style="font-size:18px; font-weight:700; padding:4px 2px 6px;">－</div>
           <select id="txBranch" style="display:none;">
-            <option>長安診所</option>
-            <option>板橋診所</option>
           </select>
 
           <div class="item-block">
@@ -796,7 +790,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v31（集團／管理員切換各店視角）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v32（診所設定）</div>
   </div>
 
   <script>
@@ -1044,6 +1038,7 @@
           if (u.admin) document.getElementById('txMeBtn').style.display = 'inline';
           document.getElementById('toggleReassignBtn').style.display = u.admin ? 'inline-block' : 'none';
           document.getElementById('ubName').textContent = u.name;
+          fillClinicSelects_(u.clinics || []);
           if (u.isOther) document.body.classList.add('role-other');
           if (u.sysAdmin) document.getElementById('tabAdmin').style.display = 'block';
           if (document.getElementById('perfView').style.display !== 'none') loadPerf();
@@ -1267,10 +1262,21 @@
       showStep(2);
     }
 
+    // 診所下拉選單：依管理員設定的診所清單產生（新診所開幕不用改程式）
+    let clinicList = [];
+    function fillClinicSelects_(list) {
+      clinicList = list || [];
+      const opts = clinicList.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('');
+      document.getElementById('newBranch').innerHTML = '<option value="">請選擇</option>' + opts;
+      document.getElementById('reassignBranch').innerHTML = '<option value="">留空表示不更改</option>' + opts;
+      document.getElementById('txBranch').innerHTML = opts;
+    }
+
     function setDefaultTxBranch_(branch) {
       const sel = document.getElementById('txBranch');
       const disp = document.getElementById('txBranchDisplay');
-      const val = branch || '長安診所';
+      if (branch && clinicList.indexOf(branch) === -1) sel.insertAdjacentHTML('beforeend', '<option>' + esc(branch) + '</option>');
+      const val = branch || clinicList[0] || '';
       sel.value = val;
       disp.textContent = val;
       sel.style.display = 'none';
@@ -1693,6 +1699,18 @@
         (off.length ? off.map(personRow).join('') : '<div class="empty">沒有離職人員。</div>') +
         '<div class="hint">設為「離職」後：該員工無法再登入、不再出現在選單和目標表；過去的業績保留不變；她名下的顧客會自動進入主管畫面的「待承接顧客」。</div></div>';
 
+      // 診所設定
+      html += '<div class="card visible"><div class="section-title">🏥　診所設定</div>' +
+        '<div class="jump-links" style="margin-top:0;">' + d.clinics.map(function (x, i) {
+          return '<span class="mini-btn">' + esc(x) + ' <b style="cursor:pointer;" data-i="' + i + '" onclick="removeClinic(this.dataset.i)">✕</b></span>';
+        }).join('') + '</div>' +
+        '<div class="row-2" style="margin-top:10px; align-items:end;"><div><label style="margin-top:0;">新增診所</label>' +
+        '<input type="text" id="adClinic" placeholder="例如：新竹診所"></div>' +
+        '<button type="button" class="add-item-btn" style="margin:0;" onclick="addClinic()">＋ 加入</button></div>' +
+        '<button type="button" class="primary-btn" id="adClinicBtn" style="margin-top:12px; box-shadow:none;" onclick="saveClinicsUI()"><span>儲存診所設定</span></button>' +
+        '<div class="hint">這份清單會用在：新增顧客／消費診所／更換診所的下拉選單、集團主管切換各店、人員的所屬診所。' +
+        '名稱要和消費紀錄裡的寫法一致（例如都寫「長安診所」）。還有在職人員的診所不能刪除。</div></div>';
+
       // 部門設定
       html += '<div class="card visible"><div class="section-title">🏢　部門設定</div>' +
         '<div class="group-title first">服務部門（有顧客關懷、業績、目標）</div><div class="jump-links" style="margin-top:4px;">' +
@@ -2007,6 +2025,34 @@
         .withSuccessHandler(function (r) { showToast('已釋出約 ' + r.freed.toLocaleString('en-US') + ' 格'); loadAdmin(); })
         .withFailureHandler(function (err) { btn.disabled = false; btn.textContent = '🧹 清除多餘空白列'; showToast(err.message); })
         .crmTrimEmptyCells();
+    }
+
+    function addClinic() {
+      const v = document.getElementById('adClinic').value.trim();
+      if (!v) { showToast('請輸入診所名稱'); return; }
+      if (adminData.clinics.indexOf(v) !== -1) { showToast('這家診所已經有了'); return; }
+      adminData.clinics.push(v);
+      renderAdmin();
+    }
+
+    function removeClinic(i) {
+      adminData.clinics.splice(Number(i), 1);
+      renderAdmin();
+    }
+
+    function saveClinicsUI() {
+      const btn = document.getElementById('adClinicBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function (list) {
+          showToast('診所設定已儲存');
+          fillClinicSelects_(list);
+          if (perfUser) { perfUser.branches = list.concat((perfUser.branches || []).filter(function (b) { return list.indexOf(b) === -1; })); perfStale = true; }
+          loadAdmin();
+        })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存診所設定</span>'; showToast(err.message); loadAdmin(); })
+        .saveClinics(adminData.clinics);
     }
 
     function addOtherDept() {
