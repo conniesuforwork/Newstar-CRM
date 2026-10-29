@@ -796,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v30（Excel 月報表）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v31（集團／管理員切換各店視角）</div>
   </div>
 
   <script>
@@ -1583,7 +1583,7 @@
               '<div class="row-actions"><button class="mini-btn" onclick="decideTk(this, true)">✓ 核准</button>' +
               '<button class="mini-btn grey" onclick="decideTk(this, false)">退回</button></div></div>';
           }).join('') : '<div class="empty">目前沒有待核准的申請。</div>') + '</div>';
-      }).withFailureHandler(function () {}).getTakeoverRequests();
+      }).withFailureHandler(function () {}).getTakeoverRequests(currentScope_());
 
       api().withSuccessHandler(function (res) {
         const box = document.getElementById('unassignedCard');
@@ -1602,7 +1602,7 @@
               '<option value="">指派給…</option>' + opts + '</select>' +
               '<button class="mini-btn" onclick="assignUnassigned(this)">指派</button></div></div>';
           }).join('') : '<div class="empty">沒有待承接的顧客。</div>') + '</div>';
-      }).withFailureHandler(function () {}).getUnassignedCustomers();
+      }).withFailureHandler(function () {}).getUnassignedCustomers(currentScope_());
     }
 
     function decideTk(btn, approve) {
@@ -2085,6 +2085,11 @@
         .saveParams(values, paramBranch);
     }
 
+    // 目前畫面是哪一家店（集團總覽或個人畫面＝空白）
+    function currentScope_() {
+      return viewAs && viewAs.indexOf('__scope__:') === 0 ? viewAs.slice(10) : '';
+    }
+
     function goManagerView() {
       switchViewAs(perfUser.group ? '__team__' : '__scope__:' + perfUser.branch);
     }
@@ -2101,6 +2106,17 @@
       const s = d.store, t = s.target;
       let html = '<div class="perf-head"><span>' + whoSelect_(viewAs) + '　' + d.updatedAt + ' 更新</span>' +
         '<button class="link-btn" onclick="loadPerf()">重新整理</button></div>';
+      // 集團主管／管理員：一鍵切換集團或各店（各店畫面＝那家店的店主管視角）
+      if (perfUser.group && perfUser.branches && perfUser.branches.length) {
+        html += '<div class="jump-links" style="margin:0 0 12px;">' +
+          '<button type="button" class="mini-btn ' + (d.scope ? 'grey' : '') + '" onclick="switchViewAs(\'__team__\')">📊 集團</button>' +
+          perfUser.branches.map(function (b) {
+            return '<button type="button" class="mini-btn ' + (d.scope === b ? '' : 'grey') + '" data-b="' + esc(b) + '" ' +
+              'onclick="switchViewAs(\'__scope__:\' + this.dataset.b)">🏥 ' + esc(b) + '</button>';
+          }).join('') + '</div>';
+        if (d.scope) html += '<div class="done-bar" style="display:block;">你正在以<b>店主管視角</b>查看「<b>' + esc(d.scope) +
+          '</b>」：業績、人員、目標、承接申請、待承接顧客、月報都只計算這家店。</div>';
+      }
 
       html += '<button type="button" class="add-item-btn" style="margin:0 0 14px; background:var(--secondary-light); color:#4C6142;" ' +
         'onclick="switchViewAs(perfUser.name)">👤 回到我的畫面（我自己的業績）</button>';
@@ -2441,7 +2457,7 @@
     // ---------- 主管：設定業績目標 ----------
     function targetCardHtml() {
       const m = localDateStr().slice(0, 7);
-      return '<div class="card visible" id="targetCard"><div class="section-title">🎯　設定業績目標' + (perfUser.group ? '（集團主管）' : '（' + esc(perfUser.branch) + '）') + '</div>' +
+      return '<div class="card visible" id="targetCard"><div class="section-title">🎯　設定業績目標' + (currentScope_() ? '（' + esc(currentScope_()) + '）' : perfUser.group ? '（全集團）' : '（' + esc(perfUser.branch) + '）') + '</div>' +
         '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">月份</label>' +
         '<input type="month" id="tgMonth" value="' + m + '" onchange="loadTargets()"></div>' +
         '<div class="hint" style="margin:0 0 6px;">總目標留空＝新客＋舊客</div></div>' +
@@ -2462,7 +2478,7 @@
             }).join('') + '</div>';
         })
         .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-        .getTargetsForMonth(document.getElementById('tgMonth').value);
+        .getTargetsForMonth(document.getElementById('tgMonth').value, currentScope_());
     }
 
     function saveTargets() {
@@ -2496,15 +2512,23 @@
     let reportReq = {};
     function reportCardHtml_(title, btnText, req, month, desc) {
       reportReq = req;
+      // 集團主管在集團總覽：另外可以直接選一家診所下載店月報
+      const storePick = (req.type === 'group' && perfUser && perfUser.branches && perfUser.branches.length)
+        ? '<div class="row-2" style="align-items:end; margin-top:12px;"><div><label style="margin-top:0;">單店月報</label>' +
+          '<select id="rpBranch">' + perfUser.branches.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+          '<button type="button" class="add-item-btn" id="rpBtn2" style="margin:0;" onclick="downloadReport(true)">下載店月報</button></div>'
+        : '';
       return '<div class="card visible"><div class="section-title">📥　' + title + '（Excel）</div>' +
         '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">月份</label>' +
         '<input type="month" id="rpMonth" value="' + esc(month) + '"></div>' +
         '<button type="button" class="add-item-btn" id="rpBtn" style="margin:0;" onclick="downloadReport()">' + btnText + '</button></div>' +
+        storePick +
         '<div class="hint">' + desc + '</div></div>';
     }
 
-    function downloadReport() {
-      const btn = document.getElementById('rpBtn');
+    function downloadReport(store) {
+      const btn = document.getElementById(store ? 'rpBtn2' : 'rpBtn');
+      const req = store ? { type: 'store', branch: document.getElementById('rpBranch').value } : reportReq;
       const label = btn.textContent;
       btn.disabled = true;
       btn.textContent = '產生中，請稍候...';
@@ -2527,7 +2551,7 @@
             } catch (e) { done('產生 Excel 失敗：' + e.message); }
           })
           .withFailureHandler(function (err) { done(err.message); })
-          .getMonthlyReport(Object.assign({ month: document.getElementById('rpMonth').value }, reportReq));
+          .getMonthlyReport(Object.assign({ month: document.getElementById('rpMonth').value }, req));
       });
     }
 
