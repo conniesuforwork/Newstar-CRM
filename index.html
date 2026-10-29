@@ -796,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v27（各診所 RFM）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v28（年度等級／去年等級）</div>
   </div>
 
   <script>
@@ -1130,6 +1130,7 @@
               '<span class="tag">📱 ' + esc(c.phone || '未填') + '</span>' +
               (c.branch ? '<span class="tag">🏥 ' + esc(c.branch) + '</span>' : '') +
               (c.grade ? '<span class="tag grade-' + esc(String(c.grade).toLowerCase()) + '">等級 ' + esc(c.grade) + '</span>' : '') +
+              (c.lastYearGrade ? '<span class="tag">去年 ' + esc(c.lastYearGrade) + '</span>' : '') +
               (c.rfmStatus ? '<span class="tag ' + rfmTagClass(c.rfmStatus) + '">' + esc(c.rfmStatus) + '</span>' : '') +
             '</div>' +
           '</div>';
@@ -1232,8 +1233,9 @@
       const branchLine = customer.branch ? '<br>🏥 所屬診所：' + esc(customer.branch) : '';
       const gradeTag = customer.grade
         ? ' <span class="tag grade-' + esc(String(customer.grade).toLowerCase()) + '">等級 ' + esc(customer.grade) + '</span>' : '';
-      const rfmLine = customer.rfmStatus ? '<br>📊 ' + esc(customer.rfmStatus) +
-        (customer.rfmScore ? '（總分 ' + esc(customer.rfmScore) + '）' : '') + gradeTag : '';
+      const lastTag = customer.lastYearGrade ? ' <span class="tag">去年 ' + esc(customer.lastYearGrade) + '</span>' : '';
+      const rfmLine = (customer.rfmStatus || customer.grade) ? '<br>📊 ' + esc(customer.rfmStatus || '') +
+        (customer.rfmScore ? '（總分 ' + esc(customer.rfmScore) + '）' : '') + gradeTag + lastTag : '';
 
       document.getElementById('confirmedText2').innerHTML =
         '👤 <b>' + esc(customer.name) + '</b>　🎂 ' + esc(customer.birthday || '未填') +
@@ -2509,7 +2511,8 @@
     }
 
     function custItem(x, meta, kind) {
-      const grade = x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '';
+      const grade = (x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '') +
+        (x.lastGrade ? ' <span class="tag">去年 ' + esc(x.lastGrade) + '</span>' : '');
       return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(x.name || '（未填姓名）') + grade + '</div>' +
         '<div class="row-meta">' + (x.phone ? '📱 ' + esc(x.phone) + '<br>' : '') + meta +
         (x.lastCare ? '<br>💬 上次關懷 ' + esc(x.lastCare) : '') + '</div></div></div>' +
