@@ -1,0 +1,2659 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #F3EFE9;
+      --surface: #FFFFFF;
+      --primary: #B49A85;
+      --primary-dark: #9C8170;
+      --primary-light: #EAE0D3;
+      --secondary: #A9B6A0;
+      --secondary-light: #E6ECE1;
+      --text: #4A4038;
+      --text-muted: #948577;
+      --border: #E7DFD4;
+      --danger: #C98B7A;
+      --danger-light: #F4E5DF;
+      --radius-lg: 22px;
+      --radius-md: 14px;
+      --shadow: 0 10px 28px rgba(74, 64, 56, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      font-size: 18px;
+    }
+
+    .app-frame {
+      max-width: 640px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--bg);
+      position: relative;
+      padding-bottom: 32px;
+    }
+
+    @media (min-width: 700px) {
+      body { display: flex; justify-content: center; padding: 24px 0; background: #E3DED6; }
+      .app-frame {
+        min-height: 860px;
+        max-height: 960px;
+        overflow-y: auto;
+        border-radius: 36px;
+        box-shadow: 0 20px 60px rgba(74, 64, 56, 0.22);
+        border: 6px solid #FFFFFF;
+      }
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      background: linear-gradient(135deg, #C9B7A5 0%, #ADB8A2 100%);
+      padding: 26px 22px 20px;
+      color: #FFFFFF;
+      border-radius: 0 0 28px 28px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+    .topbar .brand { display: flex; align-items: center; gap: 10px; }
+    .topbar .brand svg { flex-shrink: 0; opacity: 0.95; width: 30px; height: 30px; }
+    .topbar h1 { margin: 0; font-size: 25px; font-weight: 700; letter-spacing: 0.5px; }
+    .topbar p { margin: 4px 0 0; font-size: 15px; opacity: 0.88; letter-spacing: 0.3px; }
+
+    .tabs { display: flex; gap: 8px; margin-top: 16px; }
+    .tab-btn {
+      flex: 1; padding: 11px 8px; border: none; border-radius: 999px;
+      background: rgba(255,255,255,0.22); color: #fff; font-size: 16px; font-weight: 700;
+      font-family: inherit; cursor: pointer;
+    }
+    .tab-btn.active { background: #fff; color: var(--primary-dark); }
+
+    .steps { display: flex; gap: 6px; margin-top: 14px; }
+    .step-dot { flex: 1; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.35); transition: background 0.2s; }
+    .step-dot.active { background: #FFFFFF; }
+
+    /* ---------- Content ---------- */
+    .content { padding: 18px 18px 8px; }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 20px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .card.visible { display: block; }
+
+    .section-title {
+      font-size: 17px; font-weight: 700; color: var(--text); margin: 0 0 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    }
+
+    .link-btn {
+      background: none; border: none; color: var(--primary-dark); font-size: 15px; font-weight: 700;
+      cursor: pointer; padding: 4px 0; font-family: inherit; text-decoration: underline;
+    }
+
+    /* ---------- Inputs ---------- */
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); opacity: 0.5; }
+
+    input[type="text"], input[type="number"], input[type="date"], input[type="password"], select {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      background: #FBFAF8;
+      border-radius: var(--radius-md);
+      padding: 15px 16px;
+      font-size: 18px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    select {
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none'><path d='M6 9l6 6 6-6' stroke='%23948577' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 38px;
+    }
+
+    .search-wrap input[type="text"] { padding-left: 44px; }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(180, 154, 133, 0.18); }
+    button:focus-visible, a:focus-visible { outline: 3px solid rgba(156, 129, 112, 0.5); outline-offset: 2px; }
+    ::placeholder { color: #B7AC9F; }
+
+    textarea {
+      width: 100%; border: 1.5px solid var(--border); background: #FBFAF8; border-radius: var(--radius-md);
+      padding: 15px 16px; font-size: 17px; color: var(--text); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit; resize: vertical; min-height: 72px;
+    }
+
+    label { display: block; font-size: 15.5px; font-weight: 700; color: var(--text-muted); margin: 16px 0 7px; }
+    label:first-of-type { margin-top: 0; }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ---------- Candidate list ---------- */
+    #results { margin-top: 10px; }
+    .candidate {
+      display: flex; align-items: center; gap: 14px;
+      border: 1.5px solid var(--border); border-radius: var(--radius-md);
+      padding: 13px 14px; margin-bottom: 10px; cursor: pointer;
+      transition: all 0.15s; background: #FBFAF8;
+    }
+    .candidate:hover { border-color: var(--primary); }
+    .candidate.selected { border-color: var(--primary); background: var(--primary-light); }
+    .avatar {
+      width: 46px; height: 46px; border-radius: 50%;
+      background: var(--primary-light); color: var(--primary-dark);
+      font-weight: 700; font-size: 18px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .candidate.selected .avatar { background: var(--primary); color: #fff; }
+    .candidate .info { flex: 1; min-width: 0; }
+    .candidate .name { font-weight: 700; font-size: 18px; }
+    .candidate .meta { color: var(--text-muted); font-size: 14.5px; margin-top: 5px; display: flex; flex-wrap: wrap; gap: 7px; }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: var(--secondary-light); color: #5F6E58;
+      border-radius: 20px; padding: 4px 11px; font-size: 13.5px; font-weight: 600;
+    }
+    .tag.birthday { background: var(--danger-light); color: #9B5F4D; }
+    .tag.rfm-active { background: var(--secondary-light); color: #4C6142; }
+    .tag.rfm-sleep { background: #EDE3DA; color: #8A7A68; }
+    .tag.rfm-new { background: var(--primary-light); color: var(--primary-dark); }
+    .tag.staff-left { background: var(--danger-light); color: #9B5F4D; }
+    .tag.grade-a { background: #DCE7D3; color: #3F5A34; }
+    .tag.grade-b { background: #F3DFAE; color: #7A5A18; }
+    .tag.grade-c { background: #EFE0C9; color: #6B5A3B; }
+    .tag.grade-d { background: #F4D9D0; color: #8A4A38; }
+
+    .warn {
+      color: #9B5F4D; font-size: 15px; margin-top: 8px;
+      background: var(--danger-light); border-radius: var(--radius-md);
+      padding: 14px; display: none;
+    }
+    .warn .link-btn { color: #9B5F4D; margin-top: 6px; display: inline-block; }
+
+    #confirmedBanner, #confirmedBanner2 {
+      display: none; margin-top: 10px; background: var(--secondary-light);
+      border-radius: var(--radius-md); padding: 14px 16px; font-size: 15.5px;
+      color: #4C5A46; align-items: flex-start; gap: 8px; justify-content: space-between;
+      line-height: 1.6;
+    }
+    #confirmedBanner b, #confirmedBanner2 b { color: #384432; }
+    .banner-text { flex: 1; }
+
+    .done-bar {
+      display: none; background: var(--secondary-light); color: #4C5A46;
+      border-radius: var(--radius-md); padding: 12px 14px; font-size: 15.5px; margin-bottom: 14px; line-height: 1.6;
+    }
+
+    /* ---------- Dynamic item rows ---------- */
+    .item-block { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 10px; }
+    .item-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .add-item-btn {
+      margin-top: 12px; width: 100%; padding: 13px; background: var(--primary-light);
+      color: var(--primary-dark); border: none; border-radius: var(--radius-md);
+      font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+
+    /* ---------- Submit buttons ---------- */
+    button.primary-btn {
+      width: 100%; padding: 18px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: #fff; border: none; border-radius: 999px; font-size: 18px; font-weight: 700;
+      letter-spacing: 1px; cursor: pointer; box-shadow: 0 8px 20px rgba(156, 129, 112, 0.35);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: transform 0.1s, opacity 0.15s; font-family: inherit;
+    }
+    button.primary-btn:active { transform: scale(0.98); }
+    button.primary-btn:disabled { background: #CBC2B6; box-shadow: none; cursor: not-allowed; }
+
+    /* ---------- 我的業績 ---------- */
+    .perf-head {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      margin: 0 4px 12px; font-size: 15px; color: var(--text-muted); flex-wrap: wrap;
+    }
+    .perf-head b { color: var(--text); }
+    .hero .label { font-size: 15px; color: var(--text-muted); font-weight: 700; }
+    .hero .big { font-size: 40px; font-weight: 800; color: var(--text); margin: 2px 0 12px; letter-spacing: 0.5px; }
+    .progress { height: 14px; background: var(--primary-light); border-radius: 999px; overflow: hidden; }
+    .progress > div { height: 100%; background: linear-gradient(90deg, var(--secondary), var(--primary-dark)); border-radius: 999px; }
+    .hint { font-size: 15px; color: var(--text-muted); margin-top: 10px; line-height: 1.7; }
+    .hint b { color: var(--text); }
+    .hint.good { color: #4C6142; font-weight: 700; }
+    .up { color: #4C6142; font-weight: 700; }
+    .down { color: #9B5F4D; font-weight: 700; }
+
+    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kpi { background: #FBFAF8; border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; }
+    .kpi .k-label { font-size: 14px; color: var(--text-muted); font-weight: 700; }
+    .kpi .k-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+    .kpi .k-sub { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+
+    .chart { display: flex; align-items: flex-end; gap: 2px; height: 110px; }
+    .chart .bar { flex: 1; background: var(--secondary-light); border-radius: 3px 3px 0 0; min-height: 3px; }
+    .chart .bar.has { background: var(--secondary); }
+    .chart .bar.today { background: var(--primary-dark); }
+    .chart-axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+
+    .hbar-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; font-size: 15px; }
+    .hbar-row .hb-name { width: 64px; flex-shrink: 0; }
+    .hbar-row .hb-track { flex: 1; height: 10px; background: var(--primary-light); border-radius: 999px; overflow: hidden; }
+    .hbar-row .hb-track div { height: 100%; background: var(--primary); border-radius: 999px; }
+    .hbar-row .hb-val { width: 104px; text-align: right; color: var(--text-muted); font-size: 13.5px; }
+    .hbar-row .hb-val b { color: var(--text); }
+    .jump-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .sub-panel { margin-top: 10px; background: #FBFAF8; border: 1.5px dashed var(--border); border-radius: var(--radius-md); padding: 12px; }
+    .pay-tag { font-size: 12.5px; padding: 1px 8px; border-radius: 999px; background: #F3DFAE; color: #7A5A18; margin-left: 4px; }
+    .neg { color: #9B5F4D; }
+    .no-block { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .no-block:last-child { border-bottom: none; padding-bottom: 0; }
+    .no-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .no-head .v { font-size: 22px; font-weight: 800; }
+    .tgt-grid { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 6px; align-items: center; font-size: 13.5px; }
+    .tgt-grid input { padding: 8px 8px; font-size: 14.5px; }
+    .tgt-grid .th { color: var(--text-muted); font-weight: 700; font-size: 12.5px; }
+    .role-other #tabPerf, .role-other .jump-links, .role-other #toggleReassignBtn, .role-other #reassignPanel,
+    .role-other #changePanel, .role-other #fuCard, .role-other #consultCard, .role-other #takeoverPanel,
+    .role-other #txMeBtn { display: none !important; }
+    .role-other-only { display: none; }
+    .role-other .role-other-only { display: block; }
+    .sub-row { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text-muted); padding: 2px 0 2px 14px; }
+    .sub-row b { color: var(--text); font-weight: 700; }
+    .dept-tag { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; background: var(--secondary-light); color: #4C6142; margin-left: 4px; font-weight: 600; }
+    /* ---------- 登入 ---------- */
+    #loginView, #pwView { display: none; }
+    .logged-out #loginView { display: block; }
+    .logged-out .tabs, .logged-out .steps, .logged-out #entryView, .logged-out #perfView, .logged-out #adminView,
+    .logged-out #userBar, .must-change .tabs, .must-change .steps, .must-change #entryView, .must-change #perfView,
+    .must-change #adminView { display: none !important; }
+    .must-change #pwView { display: block; }
+    .temp-pw { font-size: 26px; font-weight: 800; letter-spacing: 3px; margin: 6px 0; color: var(--text); font-family: monospace; }
+    .new-tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--danger-light); color: #9B5F4D; margin-left: 4px; }
+
+    .group-title { font-size: 15.5px; font-weight: 800; margin: 18px 0 2px; display: flex; align-items: center; gap: 6px; }
+    .group-title.first { margin-top: 0; }
+    .count-pill { background: var(--primary-light); color: var(--primary-dark); border-radius: 999px; padding: 1px 10px; font-size: 13px; }
+    .count-pill.red { background: var(--danger-light); color: #9B5F4D; }
+
+    .row-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .row-item:last-child { border-bottom: none; }
+    .row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .row-name { font-weight: 700; font-size: 17px; }
+    .row-meta { font-size: 14.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.55; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .mini-btn {
+      border: none; border-radius: 999px; padding: 9px 13px; font-size: 14.5px; font-weight: 700;
+      font-family: inherit; cursor: pointer; background: var(--secondary-light); color: #4C6142;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    }
+    .mini-btn.brown { background: var(--primary-light); color: var(--primary-dark); }
+    .mini-btn.grey { background: #EFEAE4; color: var(--text-muted); }
+    .resched { display: none; gap: 6px; margin-top: 8px; align-items: center; }
+    .resched input { flex: 1; padding: 10px 12px; font-size: 16px; }
+    .fu-item.busy { opacity: 0.45; pointer-events: none; }
+    .done-text { color: #4C6142; font-weight: 700; font-size: 15px; }
+    .empty { color: var(--text-muted); font-size: 15px; padding: 8px 0 2px; }
+    .amount { font-weight: 800; white-space: nowrap; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 100px; transform: translate(-50%, 20px);
+      background: #4A4038; color: #fff; padding: 14px 22px; border-radius: 18px;
+      font-size: 15.5px; opacity: 0; pointer-events: none; transition: all 0.25s;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2); z-index: 50;
+      width: max-content; max-width: 90%; text-align: center; line-height: 1.5;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body class="logged-out">
+  <div class="app-frame">
+
+    <div class="topbar">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+          <path d="M12 21s-7.5-4.6-10-9.3C0.3 8.1 2 4.5 5.6 4c2-.3 3.7.6 4.9 2 .9-1.5 2.6-2.3 4.6-2 3.6.5 5.3 4.1 3.6 7.7C16.5 16.4 12 21 12 21z" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <h1>欣莘醫美</h1>
+          <p>顧客建檔 · 消費紀錄 · 我的業績</p>
+        </div>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" id="tabEntry" onclick="switchTab('entry')">📝 建檔／消費</button>
+        <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 我的業績</button>
+        <button class="tab-btn" id="tabAdmin" style="display:none;" onclick="switchTab('admin')">⚙️ 系統管理</button>
+      </div>
+      <div class="steps" id="stepsBar">
+        <div class="step-dot active" id="dot1"></div>
+        <div class="step-dot" id="dot2"></div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ===================== 登入 ===================== -->
+      <div id="loginView">
+        <div class="card visible">
+          <div class="section-title">🔐　登入</div>
+          <label>帳號（Email）</label>
+          <input type="text" id="lgEmail" autocomplete="username" inputmode="email" autocapitalize="off">
+          <label>密碼</label>
+          <input type="password" id="lgPw" autocomplete="current-password" onkeydown="if (event.key === 'Enter') doLogin()">
+          <button class="primary-btn" id="lgBtn" style="margin-top:18px;" onclick="doLogin()"><span>登入</span></button>
+          <div class="hint">忘記密碼請洽管理員重設。登入 12 小時後會自動登出；共用電腦用完請按最下方「登出」。</div>
+        </div>
+      </div>
+
+      <!-- ===================== 修改密碼 ===================== -->
+      <div id="pwView">
+        <div class="card visible">
+          <div class="section-title">🔑　修改密碼</div>
+          <div class="hint" id="pwHint" style="margin-top:0;"></div>
+          <label>目前的密碼</label>
+          <input type="password" id="pwOld" autocomplete="current-password">
+          <label>新密碼</label>
+          <input type="password" id="pwNew" autocomplete="new-password" placeholder="至少 8 碼，要有英文和數字">
+          <label>再輸入一次新密碼</label>
+          <input type="password" id="pwNew2" autocomplete="new-password" onkeydown="if (event.key === 'Enter') submitPw()">
+          <button class="primary-btn" id="pwBtn" style="margin-top:18px;" onclick="submitPw()"><span>確認修改</span></button>
+          <button type="button" class="link-btn" id="pwCancel" style="margin-top:10px;" onclick="closePw_()">取消</button>
+        </div>
+      </div>
+
+      <!-- ===================== 分頁一：建檔／消費 ===================== -->
+      <div id="entryView">
+
+        <!-- STEP 1：搜尋顧客 -->
+        <div class="card visible" id="searchCard">
+          <div class="section-title">🔍　查詢顧客</div>
+          <div class="search-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#948577" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="#948577" stroke-width="2" stroke-linecap="round"/></svg>
+            <input type="text" id="custName" placeholder="輸入顧客姓名" oninput="onNameInput()" autocomplete="off">
+          </div>
+
+          <div id="results"></div>
+
+          <div class="warn" id="noMatchWarn">
+            查無此姓名的顧客資料。<br>
+            <button class="link-btn" onclick="goToAddCustomer()">＋ 新增顧客建檔</button>
+          </div>
+
+          <div id="confirmedBanner">
+            <div class="banner-text"><span>✅ </span><span id="confirmedText"></span></div>
+            <button class="link-btn" onclick="resetAll()">重選</button>
+          </div>
+        </div>
+
+        <!-- STEP 1b：新增顧客 -->
+        <div class="card" id="addCustomerCard">
+          <div class="section-title">
+            🧑‍⚕️　新增顧客建檔
+            <button class="link-btn" onclick="backToSearch()">← 返回搜尋</button>
+          </div>
+
+          <label>顧客姓名</label>
+          <input type="text" id="newName" placeholder="姓名">
+
+          <label>手機號碼</label>
+          <input type="text" id="newPhone" placeholder="09xx-xxx-xxx" inputmode="tel">
+
+          <label>生日</label>
+          <input type="date" id="newBirthday">
+
+          <div class="row-2">
+            <div>
+              <label>所屬診所</label>
+              <select id="newBranch">
+                <option value="">請選擇</option>
+                <option>長安診所</option>
+                <option>板橋診所</option>
+              </select>
+            </div>
+            <div>
+              <label>管道來源</label>
+              <select id="newSource">
+                <option value="">請選擇</option>
+                <option>FB</option>
+                <option>IG</option>
+                <option>轉介</option>
+                <option>Google</option>
+                <option>其他</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div>
+              <label>偏好/指定醫師</label>
+              <input type="text" id="newDoctor" placeholder="輸入姓名" list="doctorList" autocomplete="off">
+            </div>
+            <div>
+              <label>諮詢師</label>
+              <input type="text" id="newConsultant" placeholder="輸入姓名" list="staffList" autocomplete="off">
+            </div>
+          </div>
+
+          <label>顧客備註</label>
+          <textarea id="newNote" placeholder="膚質/過敏史/偏好等備註"></textarea>
+
+          <button class="primary-btn" id="createCustomerBtn" style="margin-top:18px;" onclick="createCustomer()">
+            <span>建立顧客檔案</span>
+          </button>
+        </div>
+
+        <!-- STEP 2：消費紀錄 -->
+        <div class="card" id="txCard">
+          <div class="section-title">
+            🧾　本次消費紀錄
+            <button class="link-btn" onclick="resetAll()">換一位顧客</button>
+          </div>
+
+          <div id="confirmedBanner2">
+            <div class="banner-text"><span id="confirmedText2"></span></div>
+          </div>
+
+          <div id="courseBox" class="sub-panel" style="display:none; border-style:solid;"></div>
+
+        <div class="jump-links">
+          <button type="button" class="mini-btn grey" onclick="jumpTo('consultCard')">🗒 寫諮詢紀錄</button>
+          <button type="button" class="mini-btn grey" onclick="jumpTo('fuCard')">🩹 排術後關懷</button>
+          <button type="button" class="mini-btn grey" onclick="toggleChangePanel()">🔁 更改療程</button>
+          <button type="button" class="mini-btn grey" onclick="toggleEntryReview()">⭐ 登記 Google 評論</button>
+          <button type="button" class="mini-btn grey" id="takeoverBtn" style="display:none;" onclick="toggleTakeover()">🙋 申請承接這位顧客</button>
+        </div>
+
+        <div id="takeoverPanel" class="sub-panel" style="display:none;">
+          <div class="section-title" style="margin-bottom:6px;">🙋　申請承接這位顧客</div>
+          <div class="hint" style="margin-top:0;">主管核准後，這位顧客會成為你的顧客，之後的生日、沉睡喚醒、關懷都會出現在你的畫面。已經收過的業績不會移動。</div>
+          <label>申請原因</label>
+          <input type="text" id="tkReason" placeholder="例如：原諮詢師已離職，這次服務客人很滿意">
+          <button type="button" class="primary-btn" id="tkBtn" style="margin-top:12px; box-shadow:none;" onclick="submitTakeover()">
+            <span>送出申請</span>
+          </button>
+        </div>
+
+        <div id="entryReviewPanel" class="sub-panel" style="display:none;">
+          <div class="section-title" style="margin-bottom:6px;">⭐　這位顧客留了 Google 評論</div>
+          <div class="row-2">
+            <div>
+              <label style="margin-top:0;">Google 上的顯示名稱</label>
+              <input type="text" id="erGoogleName" placeholder="方便主管核對">
+            </div>
+            <div>
+              <label style="margin-top:0;">評論日期</label>
+              <input type="date" id="erDate">
+            </div>
+          </div>
+          <label>備註</label>
+          <input type="text" id="erNote" placeholder="選填，例如：五星、有提到林醫師">
+          <button type="button" class="primary-btn" id="erBtn" style="margin-top:12px; box-shadow:none;" onclick="submitEntryReview()">
+            <span>登記評論</span>
+          </button>
+        </div>
+
+        <div id="changePanel" class="sub-panel" style="display:none;">
+          <div class="section-title" style="margin-bottom:6px;">🔁　更改療程（訂金轉換）</div>
+          <label style="margin-top:0;">選擇原本的訂金</label>
+          <div id="depositList"></div>
+          <div class="row-2">
+            <div>
+              <label>新療程大類</label>
+              <select id="chCat" onchange="updateChangeSummary()">
+                <option value="">請選擇</option>
+                <option>手術</option><option>微整</option><option>電音波</option>
+                <option>光療</option><option>美療</option>
+              </select>
+            </div>
+            <div>
+              <label>更改日期</label>
+              <input type="date" id="chDate">
+            </div>
+          </div>
+          <label>新療程項目</label>
+          <input type="text" id="chItem" placeholder="例如：玻尿酸 2cc＋肉毒 50U">
+          <label>退款金額（新療程比訂金便宜才填）</label>
+          <input type="number" id="chRefund" placeholder="0" inputmode="numeric" oninput="updateChangeSummary()">
+          <div class="hint" id="chSummary"></div>
+          <div class="hint">新療程比訂金貴的話，差額請在下面消費紀錄另外送出，款項類型選「尾款」。</div>
+          <button type="button" class="primary-btn" id="chBtn" style="margin-top:12px; box-shadow:none;" onclick="submitChange()">
+            <span>確認更改療程</span>
+          </button>
+        </div>
+
+        <button type="button" class="link-btn" id="toggleReassignBtn" style="margin-top:8px; display:none;" onclick="toggleReassignPanel()">🔒 更換諮詢師／診所（主管）</button>
+
+          <div id="reassignPanel" style="display:none; margin-top:10px; background:#FBFAF8; border:1.5px dashed var(--border); border-radius: var(--radius-md); padding:12px;">
+            <label style="margin-top:0;">新諮詢師</label>
+            <input type="text" id="reassignConsultant" placeholder="留空表示不更改" list="staffList" autocomplete="off">
+
+            <label>新所屬診所</label>
+            <select id="reassignBranch">
+              <option value="">留空表示不更改</option>
+              <option>長安診所</option>
+              <option>板橋診所</option>
+            </select>
+
+            <input type="hidden" id="reassignPin" value="">
+
+            <button type="button" class="primary-btn" id="reassignBtn" style="margin-top:12px; box-shadow:none;" onclick="submitReassign()">
+              <span>確認異動</span>
+            </button>
+          </div>
+
+          <div class="row-2">
+            <div>
+              <label>消費日期</label>
+              <input type="date" id="txDate">
+            </div>
+            <div>
+              <label>款項類型</label>
+              <select id="txPayType" onchange="onPayTypeChange()">
+                <option>全額</option>
+                <option>訂金</option>
+                <option>次訂金</option>
+                <option>尾款</option>
+              <option value="服務">服務（不收費）</option>
+              </select>
+            </div>
+          </div>
+
+          <label>
+            本次消費診所
+            <button type="button" class="link-btn" style="margin-left:6px;" onclick="toggleTxBranch()">更換診所</button>
+          </label>
+          <div id="txBranchDisplay" style="font-size:18px; font-weight:700; padding:4px 2px 6px;">－</div>
+          <select id="txBranch" style="display:none;">
+            <option>長安診所</option>
+            <option>板橋診所</option>
+          </select>
+
+          <div class="item-block">
+            <label>療程大類 1</label>
+            <select id="cat1" onchange="onCatChange(1)">
+              <option value="">請選擇</option>
+              <option>手術</option><option>微整</option><option>電音波</option>
+              <option>光療</option><option>美療</option><option>無</option>
+            </select>
+            <div id="subWrap1" style="display:none;">
+              <label>細項 1</label>
+              <select id="sub1"></select>
+            </div>
+            <label>具體項目 1</label>
+            <input type="text" id="item1" placeholder="例如：海芙音波 600發">
+          </div>
+
+          <div class="item-block" id="itemBlock2" style="display:none;">
+            <label>療程大類 2</label>
+            <select id="cat2" onchange="onCatChange(2)">
+              <option value="">請選擇</option>
+              <option>手術</option><option>微整</option><option>電音波</option>
+              <option>光療</option><option>美療</option><option>無</option>
+            </select>
+            <div id="subWrap2" style="display:none;">
+              <label>細項 2</label>
+              <select id="sub2"></select>
+            </div>
+            <label>具體項目 2</label>
+            <input type="text" id="item2" placeholder="例如：肉毒抬頭紋 20U">
+          </div>
+
+          <div class="item-block" id="itemBlock3" style="display:none;">
+            <label>療程大類 3</label>
+            <select id="cat3" onchange="onCatChange(3)">
+              <option value="">請選擇</option>
+              <option>手術</option><option>微整</option><option>電音波</option>
+              <option>光療</option><option>美療</option><option>無</option>
+            </select>
+            <div id="subWrap3" style="display:none;">
+              <label>細項 3</label>
+              <select id="sub3"></select>
+            </div>
+            <label>具體項目 3</label>
+            <input type="text" id="item3" placeholder="項目名稱">
+          </div>
+
+          <button type="button" class="add-item-btn" id="addItemBtn" onclick="revealNextItem()">＋ 新增療程項目</button>
+
+          <label>消費金額</label>
+          <input type="number" id="txAmount" placeholder="0" inputmode="numeric">
+
+          <label>負責諮詢師
+            <button type="button" class="link-btn" id="txMeBtn" style="margin-left:6px; display:none;" onclick="document.getElementById('txConsultant').value = myName_()">這位是我接的</button>
+          </label>
+          <input type="text" id="txConsultant" placeholder="輸入姓名" list="staffList" autocomplete="off">
+        <div class="hint role-other-only">請填實際服務的諮詢師或美容師；還沒決定可以先留空，之後由主管指派。</div>
+
+          <label>顧客備註</label>
+          <textarea id="txNote" placeholder="膚質/過敏史/偏好等備註"></textarea>
+
+          <button class="primary-btn" id="submitBtn" style="margin-top:18px;" onclick="submitForm()">
+            <span>送出消費紀錄</span>
+          </button>
+        </div>
+
+        <!-- 術後關懷提醒 -->
+        <div class="card" id="fuCard">
+          <div class="done-bar" id="fuDoneBar">
+            ✅ 消費紀錄已送出，已幫你帶入療程與負責人。<br>
+            需要的話選一個關懷階段就會自動算日期；不需要就
+            <button class="link-btn" onclick="resetAll()">完成，換下一位</button>
+          </div>
+
+          <div class="section-title">🩹　術後關懷提醒（選填）</div>
+
+          <label>關懷階段/事項</label>
+          <select id="fuStage">
+            <option value="">請選擇</option>
+            <option>術後1天關懷</option>
+            <option>術後7天拆線</option>
+            <option>術後1個月複查</option>
+            <option>4個月補打提醒</option>
+            <option>定期保養</option>
+          </select>
+
+          <label>預計關懷日期</label>
+          <input type="date" id="fuDate">
+
+          <label>關懷大類</label>
+          <select id="fuCategory">
+            <option value="">請選擇</option>
+            <option>手術</option><option>微整</option><option>電音波</option>
+            <option>光療</option><option>美療</option><option>無</option>
+          </select>
+
+          <label>具體項目</label>
+          <input type="text" id="fuItem" placeholder="例如：海芙音波 600發">
+
+          <label>負責人員</label>
+          <input type="text" id="fuOwner" placeholder="輸入姓名" list="staffList" autocomplete="off">
+
+          <label>追蹤狀態</label>
+          <select id="fuStatus">
+            <option>待處理</option>
+            <option>已關懷</option>
+            <option>已聯繫</option>
+            <option>已預約回診</option>
+            <option>無意願/改期</option>
+          </select>
+
+          <label>互動備註</label>
+          <textarea id="fuNote" placeholder="備註"></textarea>
+
+          <button class="primary-btn" id="fuSubmitBtn" style="margin-top:18px;" onclick="submitFollowupForm()">
+            <span>新增關懷提醒</span>
+          </button>
+        </div>
+
+        <!-- 諮詢追蹤紀錄 -->
+        <div class="card" id="consultCard">
+          <div class="section-title">🗒　諮詢追蹤紀錄</div>
+          <div class="sub-panel" id="consultAuto" style="margin:0 0 4px; border-style:solid; line-height:1.7; font-size:15px;"></div>
+
+          <div class="row-2">
+            <div>
+              <label>諮詢師</label>
+              <input type="text" id="csConsultant" list="staffList" autocomplete="off">
+            </div>
+            <div>
+              <label>本次追蹤日期</label>
+              <input type="date" id="csDate">
+            </div>
+          </div>
+
+          <label>追蹤內容</label>
+          <textarea id="csContent" placeholder="例如：詢問上次提到嘴邊肉，目前是否有改善"></textarea>
+
+          <label>客戶反饋摘要</label>
+          <textarea id="csFeedback" placeholder="例如：目前感覺還好"></textarea>
+
+          <label>顧客主要關注點</label>
+          <input type="text" id="csFocus" placeholder="例如：在意人中比例過長">
+
+          <label>顧客預算區間</label>
+          <input type="text" id="csBudget" list="budgetList" placeholder="例如：3–5 萬" autocomplete="off">
+
+          <div class="row-2">
+            <div>
+              <label>是否預約回診</label>
+              <select id="csBooked" onchange="document.getElementById('csBookDateWrap').style.visibility = this.value === '是' ? 'visible' : 'hidden'">
+                <option>否</option>
+                <option>是</option>
+              </select>
+            </div>
+            <div id="csBookDateWrap" style="visibility:hidden;">
+              <label>預約日期</label>
+              <input type="date" id="csBookDate">
+            </div>
+          </div>
+
+          <label>贈送內容</label>
+          <input type="text" id="csGift" placeholder="例如：美白IV（生日禮）">
+
+          <label>客戶回饋內容</label>
+          <textarea id="csReview"></textarea>
+
+          <label>備註</label>
+          <textarea id="csNote"></textarea>
+
+          <div class="hint">購買金額會依當天的消費紀錄自動帶入，不用另外填。</div>
+
+          <button class="primary-btn" id="csSubmitBtn" style="margin-top:14px;" onclick="submitConsult()">
+            <span>儲存諮詢紀錄</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================== 分頁二：我的業績 ===================== -->
+      <!-- ===================== 分頁三：系統管理（管理員） ===================== -->
+      <div id="adminView" style="display:none;">
+        <div id="adminBody"><div class="card visible"><div class="empty">讀取中...</div></div></div>
+      </div>
+
+      <div id="perfView" style="display:none;">
+        <div class="card visible" id="perfStatusCard">
+          <div class="empty" id="perfStatusText">正在辨識你的帳號...</div>
+          <button class="link-btn" id="perfRetryBtn" style="display:none; margin-top:8px;" onclick="loadIdentity()">再試一次</button>
+        </div>
+        <div id="perfBody"></div>
+      </div>
+
+    </div>
+
+    <datalist id="staffList"></datalist>
+    <datalist id="doctorList"></datalist>
+    <datalist id="budgetList">
+      <option value="1 萬以下"></option><option value="1–3 萬"></option><option value="3–5 萬"></option>
+      <option value="5–10 萬"></option><option value="10–30 萬"></option><option value="30 萬以上"></option>
+    </datalist>
+
+    <div class="toast" id="toast"></div>
+
+    <div id="userBar" style="text-align:center; font-size:14px; color:var(--text-muted); padding:16px 0 0;">
+      👤 <b id="ubName" style="color:var(--text);"></b>　
+      <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
+      <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
+    </div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v25（可放 GitHub Pages）</div>
+  </div>
+
+  <script>
+    let selectedCustomer = null;
+    let searchTimer = null;
+    let itemLevel = 1;
+    let perfUser = null;     // { name, email, admin, staff }
+    let viewAs = '';
+    let teamMonth = '';
+    let teamDept = '';
+    let perfStale = true;
+    let toastTimer = null;
+
+    // ===================== 登入與呼叫伺服器 =====================
+    // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
+    // 放在 Apps Script 時：保持空白即可
+    const CRM_API_URL = '';
+
+    // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
+    function serverRun_(fn, args, ok, fail) {
+      if (window.google && google.script && google.script.run) {
+        const r = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
+        r[fn].apply(r, args);
+        return;
+      }
+      if (!CRM_API_URL) { fail(new Error('尚未設定 CRM_API_URL')); return; }
+      let tries = 0;
+      const go = function () {
+        tries++;
+        fetch(CRM_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ fn: fn, args: args })
+        })
+          .then(function (resp) { return resp.json(); })
+          .then(function (res) {
+            if (res.ok) ok(res.data); else fail(new Error(res.error));
+          })
+          .catch(function (err) {
+            if (tries < 3) setTimeout(go, 800 * tries);
+            else fail(new Error('網路連線不穩，請再試一次'));
+          });
+      };
+      go();
+    }
+
+    let authToken = '';
+    try { authToken = localStorage.getItem('crm_token') || ''; } catch (e) {}
+
+    function saveToken_(t) {
+      authToken = t || '';
+      try { if (authToken) localStorage.setItem('crm_token', authToken); else localStorage.removeItem('crm_token'); } catch (e) {}
+    }
+
+    // 所有伺服器功能都經過 crmCall 驗證登入；寫法和 google.script.run 一樣
+    function api() {
+      const st = { ok: null, fail: null };
+      const proxy = new Proxy({}, {
+        get: function (target, prop) {
+          if (prop === 'withSuccessHandler') return function (fn) { st.ok = fn; return proxy; };
+          if (prop === 'withFailureHandler') return function (fn) { st.fail = fn; return proxy; };
+          return function () {
+            const args = Array.prototype.slice.call(arguments);
+            serverRun_('crmCall', [authToken, String(prop), args],
+              function (r) { if (st.ok) st.ok(r); },
+              function (err) {
+                const msg = String(err && err.message || err);
+                if (/重新登入|已過期|已失效/.test(msg)) { doLogout_(msg.replace(/^.*?:\s*/, '')); return; }
+                if (/請先修改密碼/.test(msg)) { showPw_(true); return; }
+                if (st.fail) st.fail(err); else console.log(msg);
+              });
+          };
+        }
+      });
+      return proxy;
+    }
+
+    function doLogin() {
+      const email = document.getElementById('lgEmail').value.trim();
+      const pw = document.getElementById('lgPw').value;
+      if (!email || !pw) { showToast('請輸入帳號和密碼'); return; }
+      const btn = document.getElementById('lgBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>登入中...</span>';
+      serverRun_('crmLogin', [email, pw],
+        function (r) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>登入</span>';
+          document.getElementById('lgPw').value = '';
+          try { localStorage.setItem('crm_last_email', email); } catch (e) {}
+          saveToken_(r.token);
+          if (r.mustChange) { document.body.classList.remove('logged-out'); showPw_(true); }
+          else startApp_();
+        },
+        function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>登入</span>';
+          showToast(String(err.message || err).replace(/^.*?Error:\s*/, ''));
+        });
+    }
+
+    function startApp_() {
+      document.body.classList.remove('logged-out', 'must-change');
+      loadIdentity();
+      loadLists_();
+    }
+
+    function doLogout_(msg) {
+      saveToken_('');
+      perfUser = null;
+      perfStale = true;
+      document.getElementById('perfBody').innerHTML = '';
+      document.getElementById('adminBody').innerHTML = '';
+      document.getElementById('tabAdmin').style.display = 'none';
+      document.getElementById('txMeBtn').style.display = 'none';
+      document.body.className = 'logged-out';
+      resetAll();
+      switchTab('entry');
+      if (msg) showToast(msg);
+    }
+
+    function showPw_(forced) {
+      if (forced) document.body.classList.add('must-change');
+      document.getElementById('pwView').style.display = 'block';
+      document.getElementById('pwCancel').style.display = forced ? 'none' : 'inline-block';
+      document.getElementById('pwHint').textContent = forced
+        ? '第一次登入（或管理員剛重設過），請先把臨時密碼改成你自己的密碼。'
+        : '修改後，其他裝置上的登入會自動登出。';
+      ['pwOld', 'pwNew', 'pwNew2'].forEach(function (id) { document.getElementById(id).value = ''; });
+      document.getElementById('pwView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function closePw_() {
+      document.getElementById('pwView').style.display = 'none';
+    }
+
+    function submitPw() {
+      const oldPw = document.getElementById('pwOld').value;
+      const n1 = document.getElementById('pwNew').value, n2 = document.getElementById('pwNew2').value;
+      if (!oldPw || !n1) { showToast('請填寫目前的密碼和新密碼'); return; }
+      if (n1 !== n2) { showToast('兩次輸入的新密碼不一樣'); return; }
+      if (n1.length < 8 || !/[A-Za-z]/.test(n1) || !/\d/.test(n1)) { showToast('新密碼至少 8 碼，要有英文和數字'); return; }
+      const forced = document.body.classList.contains('must-change');
+      const btn = document.getElementById('pwBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>處理中...</span>';
+      api()
+        .withSuccessHandler(function (r) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認修改</span>';
+          saveToken_(r.token);
+          showToast('密碼已修改');
+          document.getElementById('pwView').style.display = 'none';
+          if (forced) startApp_();
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認修改</span>';
+          showToast(String(err.message || err).replace(/^.*?Error:\s*/, ''));
+        })
+        .changeMyPassword(oldPw, n1);
+    }
+
+    // ---------- 共用工具 ----------
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function money(n) { return '$' + Math.round(Number(n) || 0).toLocaleString('en-US'); }
+    // 用本地時間產生 yyyy-mm-dd（避免凌晨時 valueAsDate 變成前一天）
+    function localDateStr(d) {
+      d = d || new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    document.getElementById('txDate').value = localDateStr();
+
+    function fillDatalist_(listId, names) {
+      document.getElementById(listId).innerHTML = (names || []).map(function (n) {
+        return '<option value="' + esc(n) + '"></option>';
+      }).join('');
+    }
+
+    // 療程細項（「療程細項」分頁）
+    let itemCatalog = {};
+
+    // 登入後才載入：身分、人員名單、細項
+    function loadLists_() {
+      api()
+        .withSuccessHandler(function (names) {
+          fillDatalist_('staffList', names);
+          // 再補上諮詢部＋美容部的人員
+          api().withSuccessHandler(function (more) {
+            const dl = document.getElementById('staffList');
+            const have = {};
+            Array.prototype.forEach.call(dl.options, function (o) { have[o.value] = true; });
+            (more || []).forEach(function (n) { if (!have[n]) dl.insertAdjacentHTML('beforeend', '<option value="' + esc(n) + '"></option>'); });
+          }).getServingStaffList();
+        })
+        .withFailureHandler(function (err) { console.log('讀取諮詢師名單失敗：' + err.message); })
+        .getActiveConsultantList();
+      api().withSuccessHandler(function (c) { itemCatalog = c || {}; }).getItemCatalog();
+      api()
+        .withSuccessHandler(function (names) { fillDatalist_('doctorList', names); })
+        .withFailureHandler(function (err) { console.log('讀取醫師名單失敗：' + err.message); })
+        .getActiveDoctorList();
+    }
+
+    // ---------- 分頁切換 ----------
+    function switchTab(tab) {
+      ['entry', 'perf', 'admin'].forEach(function (t) {
+        document.getElementById(t + 'View').style.display = t === tab ? 'block' : 'none';
+        document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
+      });
+      document.getElementById('stepsBar').style.display = tab === 'entry' ? 'flex' : 'none';
+      document.querySelector('.app-frame').scrollTop = 0;
+      window.scrollTo(0, 0);
+      if (tab === 'perf' && perfUser && perfStale) loadPerf();
+      if (tab === 'admin') loadAdmin();
+    }
+
+    function myName_() { return perfUser ? perfUser.name : ''; }
+
+    // 網頁一打開就用 Workspace 帳號辨識身分
+    function loadIdentity() {
+      document.getElementById('perfStatusText').textContent = '正在辨識你的帳號...';
+      document.getElementById('perfRetryBtn').style.display = 'none';
+      api()
+        .withSuccessHandler(function (u) {
+          perfUser = u;
+          // 集團主管預設看集團總覽；分店主管預設看自己的診所
+          // 集團主管預設看集團總覽；分店主管平常和諮詢師一樣，先看自己的畫面
+          viewAs = u.group ? '__team__' : u.name;
+          document.getElementById('perfStatusCard').classList.remove('visible');
+          if (u.admin) document.getElementById('txMeBtn').style.display = 'inline';
+          document.getElementById('toggleReassignBtn').style.display = u.admin ? 'inline-block' : 'none';
+          document.getElementById('ubName').textContent = u.name;
+          if (u.isOther) document.body.classList.add('role-other');
+          if (u.sysAdmin) document.getElementById('tabAdmin').style.display = 'block';
+          if (document.getElementById('perfView').style.display !== 'none') loadPerf();
+        })
+        .withFailureHandler(function (err) {
+          document.getElementById('perfStatusText').textContent = err.message;
+          document.getElementById('perfRetryBtn').style.display = 'inline-block';
+        })
+        .getMyIdentity();
+    }
+
+    // ---------- Step 導覽 ----------
+    function showStep(step) {
+      document.getElementById('dot1').classList.toggle('active', step === 1);
+      document.getElementById('dot2').classList.toggle('active', step === 2);
+    }
+
+    function resetAll() {
+      selectedCustomer = null;
+      document.getElementById('custName').value = '';
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('noMatchWarn').style.display = 'none';
+      document.getElementById('confirmedBanner').style.display = 'none';
+      document.getElementById('fuDoneBar').style.display = 'none';
+
+      document.getElementById('searchCard').classList.add('visible');
+      document.getElementById('addCustomerCard').classList.remove('visible');
+      document.getElementById('txCard').classList.remove('visible');
+      document.getElementById('fuCard').classList.remove('visible');
+      document.getElementById('consultCard').classList.remove('visible');
+
+      resetTxForm_();
+      resetFollowupForm_();
+      resetConsultForm_();
+      showStep(1);
+    }
+
+    function backToSearch() {
+      document.getElementById('addCustomerCard').classList.remove('visible');
+      document.getElementById('searchCard').classList.add('visible');
+      showStep(1);
+    }
+
+    // ---------- Step 1：搜尋 ----------
+    function onNameInput() {
+      const val = document.getElementById('custName').value.trim();
+      document.getElementById('confirmedBanner').style.display = 'none';
+      document.getElementById('noMatchWarn').style.display = 'none';
+      document.getElementById('results').innerHTML = '';
+
+      clearTimeout(searchTimer);
+      if (!val) return;
+
+      searchTimer = setTimeout(function () {
+        api()
+          .withSuccessHandler(showResults)
+          .withFailureHandler(function (err) { showToast('查詢失敗：' + err.message); })
+          .searchCustomerByName(val);
+      }, 300);
+    }
+
+    function rfmTagClass(status) {
+      if (status.indexOf('待活化') !== -1) return 'rfm-sleep';
+      if (status.indexOf('尚未消費') !== -1) return 'rfm-new';
+      return 'rfm-active';
+    }
+
+    function showResults(list) {
+      const box = document.getElementById('results');
+      box.innerHTML = '';
+      if (!list || list.length === 0) {
+        document.getElementById('noMatchWarn').style.display = 'block';
+        return;
+      }
+      list.forEach(function (c) {
+        const div = document.createElement('div');
+        div.className = 'candidate';
+        div.innerHTML =
+          '<div class="avatar">' + esc(c.name ? c.name.charAt(0) : '?') + '</div>' +
+          '<div class="info">' +
+            '<div class="name">' + esc(c.name) + '</div>' +
+            '<div class="meta">' +
+              '<span class="tag birthday">🎂 ' + esc(c.birthday || '未填') + '</span>' +
+              '<span class="tag">📱 ' + esc(c.phone || '未填') + '</span>' +
+              (c.branch ? '<span class="tag">🏥 ' + esc(c.branch) + '</span>' : '') +
+              (c.grade ? '<span class="tag grade-' + esc(String(c.grade).toLowerCase()) + '">等級 ' + esc(c.grade) + '</span>' : '') +
+              (c.rfmStatus ? '<span class="tag ' + rfmTagClass(c.rfmStatus) + '">' + esc(c.rfmStatus) + '</span>' : '') +
+            '</div>' +
+          '</div>';
+        div.onclick = function () { selectExistingCustomer(c, div); };
+        box.appendChild(div);
+      });
+    }
+
+    function selectExistingCustomer(c, el) {
+      selectedCustomer = c;
+      document.querySelectorAll('.candidate').forEach(function (d) { d.classList.remove('selected'); });
+      if (el) el.classList.add('selected');
+
+      document.getElementById('confirmedBanner').style.display = 'flex';
+      document.getElementById('confirmedText').innerHTML =
+        '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + esc(c.phone || '未填') + '）';
+
+      goToTransaction_(c);
+    }
+
+    function goToAddCustomer() {
+      document.getElementById('newName').value = document.getElementById('custName').value.trim();
+      if (!document.getElementById('newConsultant').value) document.getElementById('newConsultant').value = myName_();
+      document.getElementById('searchCard').classList.remove('visible');
+      document.getElementById('addCustomerCard').classList.add('visible');
+    }
+
+    // ---------- Step 1b：新增顧客 ----------
+    function createCustomer() {
+      const payload = {
+        name: document.getElementById('newName').value.trim(),
+        phone: document.getElementById('newPhone').value.trim(),
+        birthday: document.getElementById('newBirthday').value,
+        branch: document.getElementById('newBranch').value,
+        source: document.getElementById('newSource').value,
+        doctor: document.getElementById('newDoctor').value.trim(),
+        consultant: document.getElementById('newConsultant').value.trim(),
+        note: document.getElementById('newNote').value.trim()
+      };
+
+      if (!payload.name) { showToast('請輸入顧客姓名'); return; }
+      if (!payload.phone) { showToast('請輸入手機號碼'); return; }
+
+      const btn = document.getElementById('createCustomerBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>建立中...</span>';
+
+      api()
+        .withSuccessHandler(function (customer) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>建立顧客檔案</span>';
+          showToast('顧客檔案已建立');
+          selectedCustomer = customer;
+          perfStale = true;
+          document.getElementById('addCustomerCard').classList.remove('visible');
+          goToTransaction_(customer);
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>建立顧客檔案</span>';
+          showToast('建立失敗：' + err.message);
+        })
+        .addNewCustomer(payload);
+    }
+
+    // ---------- Step 2：消費紀錄 ----------
+    function goToTransaction_(customer) {
+      if (!customer) {
+        showToast('查不到這位顧客的資料，請重新查詢一次（若剛新增顧客，可能是手機號碼格式異常，請至試算表選單「顧客管理」→「📱 檢查/修復手機號碼格式」處理）');
+        backToSearch();
+        return;
+      }
+      document.getElementById('searchCard').classList.remove('visible');
+      document.getElementById('addCustomerCard').classList.remove('visible');
+      document.getElementById('txCard').classList.add('visible');
+      document.getElementById('fuCard').classList.add('visible');
+      document.getElementById('consultCard').classList.add('visible');
+      document.getElementById('fuDoneBar').style.display = 'none';
+      document.getElementById('changePanel').style.display = 'none';
+      document.getElementById('consultAuto').innerHTML =
+        '自動帶入：<b>' + esc(customer.name) + '</b>　📱 ' + esc(customer.phone || '未填') +
+        '　🎂 ' + esc(customer.birthday || '未填') +
+        (customer.grade ? '　<span class="tag grade-' + esc(String(customer.grade).toLowerCase()) + '">等級 ' + esc(customer.grade) + '</span>' : '') +
+        '<br><span style="color:var(--text-muted); font-size:13.5px;">R、F、M 與等級會在儲存時由系統自動算好</span>';
+      if (!document.getElementById('csConsultant').value) document.getElementById('csConsultant').value = myName_();
+      document.getElementById('csDate').value = localDateStr();
+      document.getElementById('fuDate').value = localDateStr();
+
+      const banner = document.getElementById('confirmedBanner2');
+      banner.style.display = 'flex';
+      const leftTag = customer.consultantStatus === '離職' ? ' <span class="tag staff-left">已離職</span>' : '';
+
+      let consultantLine = '';
+      if (customer.consultant) {
+        consultantLine = '<br>💬 目前諮詢師：' + esc(customer.consultant) + leftTag;
+        if (customer.originalConsultant && customer.originalConsultant !== customer.consultant) {
+          consultantLine += '　（原諮詢師：' + esc(customer.originalConsultant) + '）';
+        }
+      }
+      const branchLine = customer.branch ? '<br>🏥 所屬診所：' + esc(customer.branch) : '';
+      const gradeTag = customer.grade
+        ? ' <span class="tag grade-' + esc(String(customer.grade).toLowerCase()) + '">等級 ' + esc(customer.grade) + '</span>' : '';
+      const rfmLine = customer.rfmStatus ? '<br>📊 ' + esc(customer.rfmStatus) +
+        (customer.rfmScore ? '（總分 ' + esc(customer.rfmScore) + '）' : '') + gradeTag : '';
+
+      document.getElementById('confirmedText2').innerHTML =
+        '👤 <b>' + esc(customer.name) + '</b>　🎂 ' + esc(customer.birthday || '未填') +
+        '　📱 ' + esc(customer.phone || '未填') +
+        branchLine + consultantLine + rfmLine;
+
+      // 諮詢師預設：顧客的專屬諮詢師 → 沒有的話用「我的業績」登入的人
+      const defaultStaff = customer.consultant || (perfUser && perfUser.isOther ? '' : myName_());
+      document.getElementById('takeoverBtn').style.display = (customer.consultant && customer.consultant === myName_()) ? 'none' : 'inline-flex';
+      document.getElementById('takeoverPanel').style.display = 'none';
+      document.getElementById('txConsultant').value = defaultStaff;
+      document.getElementById('fuOwner').value = defaultStaff;
+      document.getElementById('txNote').value = customer.note || '';
+
+      document.getElementById('reassignPanel').style.display = 'none';
+      document.getElementById('reassignConsultant').value = '';
+      document.getElementById('reassignBranch').value = '';
+      document.getElementById('reassignPin').value = '';
+
+      document.getElementById('txBranchDisplay').textContent = '讀取中...';
+      api()
+        .withSuccessHandler(setDefaultTxBranch_)
+        .withFailureHandler(function (err) {
+          setDefaultTxBranch_(customer.branch || '');
+          showToast('診所預設值讀取失敗，請手動確認：' + err.message);
+        })
+        .getDefaultTxBranch(customer.phone);
+
+      showStep(2);
+    }
+
+    function setDefaultTxBranch_(branch) {
+      const sel = document.getElementById('txBranch');
+      const disp = document.getElementById('txBranchDisplay');
+      const val = branch || '長安診所';
+      sel.value = val;
+      disp.textContent = val;
+      sel.style.display = 'none';
+      disp.style.display = 'block';
+    }
+
+    function toggleTxBranch() {
+      const sel = document.getElementById('txBranch');
+      const disp = document.getElementById('txBranchDisplay');
+      if (sel.style.display === 'none') {
+        sel.style.display = 'block';
+        disp.style.display = 'none';
+      } else {
+        disp.textContent = sel.value;
+        sel.style.display = 'none';
+        disp.style.display = 'block';
+      }
+    }
+
+    // ---------- 主管異動諮詢師／診所 ----------
+    function toggleReassignPanel() {
+      const panel = document.getElementById('reassignPanel');
+      panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+    }
+
+    function submitReassign() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+
+      const newConsultant = document.getElementById('reassignConsultant').value.trim();
+      const newBranch = document.getElementById('reassignBranch').value;
+      const pin = document.getElementById('reassignPin').value.trim();
+
+      if (!newConsultant && !newBranch) { showToast('請至少填寫要更改的諮詢師或診所'); return; }
+
+      const payload = { phone: selectedCustomer.phone, consultant: newConsultant, branch: newBranch, pin: pin };
+      const btn = document.getElementById('reassignBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>處理中...</span>';
+
+      api()
+        .withSuccessHandler(function (customer) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認異動</span>';
+          showToast('已更新諮詢師／診所');
+          selectedCustomer = customer;
+          perfStale = true;
+          goToTransaction_(customer);
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認異動</span>';
+          showToast('異動失敗：' + err.message);
+        })
+        .updateCustomerAssignment(payload);
+    }
+
+    function revealNextItem() {
+      itemLevel += 1;
+      if (itemLevel === 2) {
+        document.getElementById('itemBlock2').style.display = 'block';
+      } else if (itemLevel === 3) {
+        document.getElementById('itemBlock3').style.display = 'block';
+        document.getElementById('addItemBtn').style.display = 'none';
+      }
+    }
+
+    function resetTxForm_() {
+      document.getElementById('txDate').value = localDateStr();
+      ['cat1', 'item1', 'cat2', 'item2', 'cat3', 'item3', 'txAmount', 'txConsultant', 'txNote'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('txPayType').value = '全額';
+      onPayTypeChange();
+      document.getElementById('courseBox').style.display = 'none';
+      [1, 2, 3].forEach(function (n) { document.getElementById('subWrap' + n).style.display = 'none'; document.getElementById('sub' + n).innerHTML = ''; });
+      document.getElementById('entryReviewPanel').style.display = 'none';
+      document.getElementById('changePanel').style.display = 'none';
+      document.getElementById('itemBlock2').style.display = 'none';
+      document.getElementById('itemBlock3').style.display = 'none';
+      document.getElementById('addItemBtn').style.display = 'block';
+      document.getElementById('confirmedBanner2').style.display = 'none';
+      document.getElementById('txBranchDisplay').textContent = '－';
+      document.getElementById('txBranchDisplay').style.display = 'block';
+      document.getElementById('txBranch').style.display = 'none';
+      itemLevel = 1;
+    }
+
+    function submitForm() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      const amount = document.getElementById('txAmount').value;
+      if (!amount) { showToast('請輸入消費金額'); return; }
+      if (!document.getElementById('txConsultant').value.trim() && !(perfUser && perfUser.isOther)) { showToast('請填負責諮詢師，業績才算得到你身上'); return; }
+
+      const payload = {
+        phone: selectedCustomer.phone,
+        name: selectedCustomer.name,
+        date: document.getElementById('txDate').value,
+        branch: document.getElementById('txBranch').value,
+        cat1: document.getElementById('cat1').value,
+        item1: document.getElementById('item1').value,
+        cat2: document.getElementById('cat2').value,
+        item2: document.getElementById('item2').value,
+        cat3: document.getElementById('cat3').value,
+        item3: document.getElementById('item3').value,
+        amount: amount,
+        payType: document.getElementById('txPayType').value,
+        sub1: document.getElementById('sub1').value,
+        sub2: document.getElementById('sub2').value,
+        sub3: document.getElementById('sub3').value,
+        consultant: document.getElementById('txConsultant').value.trim(),
+        note: document.getElementById('txNote').value
+      };
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>送出中...</span>';
+
+      api()
+        .withSuccessHandler(function () {
+          showToast('已新增消費紀錄');
+          btn.disabled = false;
+          btn.innerHTML = '<span>送出消費紀錄</span>';
+          perfStale = true;
+          afterTxSubmitted_(payload);
+        })
+        .withFailureHandler(function (err) {
+          showToast('送出失敗：' + err.message);
+          btn.disabled = false;
+          btn.innerHTML = '<span>送出消費紀錄</span>';
+        })
+        .submitTransactionV2(payload);
+    }
+
+    // 送出消費後：不直接清空，順手帶出術後關懷
+    function afterTxSubmitted_(p) {
+      document.getElementById('txCard').classList.remove('visible');
+      if (p.cat1 && p.cat1 !== '無') document.getElementById('fuCategory').value = p.cat1;
+      if (p.item1) document.getElementById('fuItem').value = p.item1;
+      if (p.consultant) document.getElementById('fuOwner').value = p.consultant;
+      document.getElementById('fuDoneBar').style.display = 'block';
+      document.getElementById('fuCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------- 術後關懷提醒 ----------
+    const STAGE_DAYS = { '術後1天關懷': 1, '術後7天拆線': 7, '術後1個月複查': 30, '4個月補打提醒': 120, '定期保養': 60 };
+    document.getElementById('fuStage').addEventListener('change', function () {
+      const n = STAGE_DAYS[this.value];
+      if (n == null) return;
+      const base = document.getElementById('txDate').value || localDateStr();
+      const parts = base.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() + n);
+      document.getElementById('fuDate').value = localDateStr(d);
+    });
+
+    function resetFollowupForm_() {
+      document.getElementById('fuDate').value = localDateStr();
+      ['fuCategory', 'fuItem', 'fuStage', 'fuOwner', 'fuNote'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('fuStatus').value = '待處理';
+    }
+
+    function submitFollowupForm() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      const date = document.getElementById('fuDate').value;
+      if (!date) { showToast('請選擇預計關懷日期'); return; }
+
+      const payload = {
+        phone: selectedCustomer.phone,
+        name: selectedCustomer.name,
+        date: date,
+        category: document.getElementById('fuCategory').value,
+        item: document.getElementById('fuItem').value,
+        stage: document.getElementById('fuStage').value,
+        owner: document.getElementById('fuOwner').value,
+        status: document.getElementById('fuStatus').value,
+        note: document.getElementById('fuNote').value
+      };
+
+      const btn = document.getElementById('fuSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>送出中...</span>';
+
+      api()
+        .withSuccessHandler(function () {
+          showToast('已新增關懷提醒');
+          btn.disabled = false;
+          btn.innerHTML = '<span>新增關懷提醒</span>';
+          perfStale = true;
+          const owner = payload.owner;
+          resetFollowupForm_();
+          document.getElementById('fuOwner').value = owner;
+        })
+        .withFailureHandler(function (err) {
+          showToast('新增失敗：' + err.message);
+          btn.disabled = false;
+          btn.innerHTML = '<span>新增關懷提醒</span>';
+        })
+        .submitFollowup(payload);
+    }
+
+    // ===================== 我的業績 =====================
+    function switchViewAs(name) {
+      viewAs = name;
+      loadPerf();
+    }
+
+    function loadPerf() {
+      if (!perfUser) return;
+      const body = document.getElementById('perfBody');
+      body.style.opacity = '0.5';
+      const team = viewAs.indexOf('__') === 0;
+      const scope = viewAs.indexOf('__scope__:') === 0 ? viewAs.slice(10) : '';
+      const run = api()
+        .withSuccessHandler(function (d) {
+          body.style.opacity = '1';
+          perfStale = false;
+          if (team) renderTeam(d); else renderPerf(d);
+        })
+        .withFailureHandler(function (err) {
+          body.style.opacity = '1';
+          showToast(err.message);
+        });
+      if (team) run.getTeamOverview(teamMonth, scope, teamDept); else run.getConsultantDashboard(viewAs);
+    }
+
+    // 主管的切換選單：第一個選項是全店總覽
+    function whoSelect_(current) {
+      if (!(perfUser && perfUser.admin && perfUser.staff.length)) return '👤 <b>' + esc(current) + '</b>';
+      return '<select onchange="switchViewAs(this.value)" style="width:auto; padding:8px 34px 8px 12px; font-size:15px;">' +
+        (perfUser.group
+          ? '<option value="__team__"' + (current === '__team__' ? ' selected' : '') + '>📊 集團總覽</option>' +
+            perfUser.branches.map(function (b) {
+              const v = '__scope__:' + b;
+              return '<option value="' + esc(v) + '"' + (current === v ? ' selected' : '') + '>🏥 ' + esc(b) + '</option>';
+            }).join('')
+          : '<option value="' + esc('__scope__:' + perfUser.branch) + '"' + (current.indexOf('__') === 0 ? ' selected' : '') + '>🏥 ' + esc(perfUser.branch) + ' 總覽</option>') +
+        '<option value="' + esc(perfUser.name) + '"' + (current === perfUser.name ? ' selected' : '') + '>👤 我自己的業績</option>' +
+        '<option disabled>──────</option>' +
+        perfUser.staff.filter(function (n) { return n !== perfUser.name; }).map(function (n) {
+          return '<option value="' + esc(n) + '"' + (n === current ? ' selected' : '') + '>' + esc(n) + '</option>';
+        }).join('') + '</select>';
+    }
+
+    // ---------- 療程細項 ----------
+    function onCatChange(n) {
+      const cat = document.getElementById('cat' + n).value;
+      const list = itemCatalog[cat] || [];
+      const wrap = document.getElementById('subWrap' + n);
+      const sel = document.getElementById('sub' + n);
+      sel.innerHTML = '<option value="">請選擇細項</option>' + list.map(function (s) {
+        return '<option>' + esc(s) + '</option>';
+      }).join('');
+      wrap.style.display = list.length ? 'block' : 'none';
+    }
+
+    // 服務（不收費）：金額固定 0
+    function onPayTypeChange() {
+      const amt = document.getElementById('txAmount');
+      if (document.getElementById('txPayType').value === '服務') {
+        amt.value = '0';
+        amt.readOnly = true;
+      } else {
+        if (amt.readOnly) amt.value = '';
+        amt.readOnly = false;
+      }
+    }
+
+    // ---------- 承接申請 ----------
+    function toggleTakeover() {
+      const p = document.getElementById('takeoverPanel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      if (p.style.display === 'block') p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function submitTakeover() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      const btn = document.getElementById('tkBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>送出中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>送出申請</span>';
+          document.getElementById('takeoverPanel').style.display = 'none';
+        loadCustomerCourses_(customer);
+          document.getElementById('tkReason').value = '';
+          showToast('已送出承接申請，等主管核准');
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>送出申請</span>';
+          showToast(err.message);
+        })
+        .requestTakeover({ phone: selectedCustomer.phone, name: selectedCustomer.name, reason: document.getElementById('tkReason').value });
+    }
+
+    // ---------- 主管：承接申請＋待承接顧客 ----------
+    function loadTakeoverCards_() {
+      api().withSuccessHandler(function (list) {
+        const box = document.getElementById('takeoverCard');
+        if (!box) return;
+        box.innerHTML = '<div class="card visible"><div class="section-title">🙋　承接申請' +
+          '<span class="count-pill' + (list.length ? ' red' : '') + '">待核准 ' + list.length + '</span></div>' +
+          (list.length ? list.map(function (r) {
+            return '<div class="row-item tk-item" data-row="' + r.row + '" data-id="' + esc(r.id) + '">' +
+              '<div class="row-name">' + esc(r.applicant) + ' 申請承接 ' + esc(r.customer) + '</div>' +
+              '<div class="row-meta">' + esc(r.date) + '　原諮詢師：' + esc(r.from || '（無）') + (r.reason ? '<br>原因：' + esc(r.reason) : '') + '</div>' +
+              '<div class="row-actions"><button class="mini-btn" onclick="decideTk(this, true)">✓ 核准</button>' +
+              '<button class="mini-btn grey" onclick="decideTk(this, false)">退回</button></div></div>';
+          }).join('') : '<div class="empty">目前沒有待核准的申請。</div>') + '</div>';
+      }).withFailureHandler(function () {}).getTakeoverRequests();
+
+      api().withSuccessHandler(function (res) {
+        const box = document.getElementById('unassignedCard');
+        if (!box) return;
+        const opts = (perfUser.staff || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+        box.innerHTML = '<div class="card visible"><div class="section-title">🧩　待承接顧客' +
+          '<span class="count-pill">' + res.total + ' 位</span></div>' +
+          '<div class="hint" style="margin-top:0;">目前諮詢師已離職、不在名單上或未指定的顧客，依等級與累積消費排序（最多列 50 位）。</div>' +
+          (res.list.length ? res.list.map(function (x) {
+            return '<div class="row-item" data-phone="' + esc(x.phone) + '">' +
+              '<div class="row-name">' + esc(x.name || '（未填姓名）') +
+              (x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '') + '</div>' +
+              '<div class="row-meta">原諮詢師：' + esc(x.from) + (x.branch ? '　' + esc(x.branch) : '') +
+              '<br>累積 ' + money(x.total) + (x.last ? '　上次到診 ' + esc(x.last) : '') + '</div>' +
+              '<div class="row-actions" style="align-items:center;"><select style="width:auto; padding:7px 34px 7px 10px; font-size:14px;">' +
+              '<option value="">指派給…</option>' + opts + '</select>' +
+              '<button class="mini-btn" onclick="assignUnassigned(this)">指派</button></div></div>';
+          }).join('') : '<div class="empty">沒有待承接的顧客。</div>') + '</div>';
+      }).withFailureHandler(function () {}).getUnassignedCustomers();
+    }
+
+    function decideTk(btn, approve) {
+      const el = btn.closest('.tk-item');
+      el.style.opacity = '0.5';
+      api()
+        .withSuccessHandler(function () {
+          el.style.opacity = '1';
+          el.innerHTML = '<div class="done-text">' + (approve ? '✅ 已核准，顧客已轉給申請人' : '已退回') + '</div>';
+        })
+        .withFailureHandler(function (err) { el.style.opacity = '1'; showToast(err.message); })
+        .decideTakeover({ row: el.dataset.row, id: el.dataset.id, approve: approve });
+    }
+
+    function assignUnassigned(btn) {
+      const el = btn.closest('.row-item');
+      const staff = el.querySelector('select').value;
+      if (!staff) { showToast('請先選擇要指派給誰'); return; }
+      el.style.opacity = '0.5';
+      api()
+        .withSuccessHandler(function () {
+          el.style.opacity = '1';
+          el.innerHTML = '<div class="done-text">✅ 已指派給 ' + esc(staff) + '</div>';
+        })
+        .withFailureHandler(function (err) { el.style.opacity = '1'; showToast(err.message); })
+        .assignCustomerFromApp({ phone: el.dataset.phone, staff: staff });
+    }
+
+    // ===================== 系統管理（管理員） =====================
+    let adminData = null;
+    let adminTempNotice = null;
+
+    function loadAdmin() {
+      const body = document.getElementById('adminBody');
+      body.style.opacity = '0.5';
+      api()
+        .withSuccessHandler(function (d) { body.style.opacity = '1'; adminData = d; renderAdmin(); })
+        .withFailureHandler(function (err) { body.style.opacity = '1'; body.innerHTML = '<div class="card visible"><div class="empty">' + esc(err.message) + '</div></div>'; })
+        .getAdminData();
+    }
+
+    function renderAdmin() {
+      const d = adminData;
+      const on = d.people.filter(function (p) { return p.status !== '離職'; });
+      const off = d.people.filter(function (p) { return p.status === '離職'; });
+      const personRow = function (p) {
+        return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(p.name) +
+          '<span class="dept-tag">' + esc(p.dept) + '</span>' +
+          (p.role !== '諮詢師' ? '<span class="pay-tag">' + esc(p.role) + '</span>' : '') + '</div>' +
+          '<div class="row-meta">' + esc(p.branch || '（未填診所）') + '　' + esc(p.email || '（未填 Email）') + '<br>' +
+          (!p.login.has ? '<span style="color:#9B5F4D; font-weight:700;">尚未設定密碼</span>'
+            : p.login.must ? '等她第一次登入改密碼' : (p.login.last ? '最後登入 ' + esc(p.login.last) : '已設定密碼')) + '</div></div>' +
+          '<button class="mini-btn brown" data-name="' + esc(p.name) + '" onclick="showPersonForm(this.dataset.name)">編輯</button></div></div>';
+      };
+
+      // 容量
+      const cap = d.capacity;
+      const capColor = cap.level >= 2 ? '#C98B7A' : cap.level === 1 ? '#D9B36A' : 'var(--secondary)';
+      let html = '<div class="card visible" id="capCard"><div class="section-title">🗄️　試算表容量' +
+        '<span style="font-size:15px; color:var(--text-muted);"><b style="color:var(--text); font-size:19px;">' + cap.pct + '%</b></span></div>' +
+        '<div class="progress"><div style="width:' + Math.min(cap.pct, 100) + '%; background:' + capColor + ';"></div></div>' +
+        '<div class="hint">已用 ' + cap.used.toLocaleString('en-US') + ' / ' + cap.limit.toLocaleString('en-US') + ' 格（空白格也算）。' +
+        (cap.level === 0 ? '容量充足。' : cap.level === 1 ? '已超過 70%，建議先清除空白列。' : '已超過 85%，請盡快清除空白列並封存舊資料。') + '</div>' +
+        '<div class="group-title">佔用最多的分頁</div>' + cap.sheets.slice(0, 5).map(function (s) {
+          return '<div class="sub-row" style="padding-left:0;"><span>' + esc(s.name) + '（資料 ' + s.dataRows + ' 列／共 ' + s.rows + ' 列）</span><b>' + s.cells.toLocaleString('en-US') + '</b></div>';
+        }).join('') +
+        (cap.longCells.length ? '<div class="hint" style="color:#9B5F4D;">有 ' + cap.longCells.length + ' 格文字特別長（系統會自動省略最舊內容，不會寫爆）。</div>' : '') +
+        (cap.reclaim > 0 ? '<button type="button" class="add-item-btn" id="trimBtn" onclick="trimCells()">🧹 清除多餘空白列（約可釋出 ' + cap.reclaim.toLocaleString('en-US') + ' 格）</button>' : '') +
+        '<div class="hint">系統每天早上 7 點自動檢查，用量超過 70%、85%、95% 時會寄信通知所有管理員。</div></div>';
+
+      html += '<div class="card visible"><div class="section-title">📥　匯入 POS 未消耗療程</div>' +
+        '<div class="hint" style="margin-top:0;">選 POS 匯出的 Excel（含海菲秀、小香局…各分頁），系統會讀取所有分頁。每次匯入會整批取代該診所的舊資料。</div>' +
+        d.posStatus.map(function (x) {
+          return '<div class="sub-row" style="padding-left:0;"><span>' + esc(x.branch) + '</span>' +
+            '<span style="' + (x.overdue ? 'color:#9B5F4D; font-weight:700;' : '') + '">' +
+            (x.dataDay ? '資料日期 ' + esc(x.dataDay) + '（' + x.age + ' 天前）' : '還沒有匯入') + (x.overdue ? '　⚠️ 該更新了' : '') + '</span></div>';
+        }).join('') +
+        '<div class="hint">超過 ' + (d.posStatus[0] ? d.posStatus[0].limit : 35) + ' 天沒更新，會寄 Email 提醒管理員（天數可在下方參數調整）。</div>' +
+        '<input type="file" id="posFile" accept=".xlsx,.xls" style="margin-top:10px; font-size:15px;" onchange="readPosFile(this)">' +
+        '<div id="posPreview"></div></div>';
+
+      html += '<div class="card visible"><div class="section-title">👥　人員管理' +
+        '<button class="mini-btn" onclick="showPersonForm(null)">＋ 新增人員</button></div>' +
+        '<div id="personForm"></div>' +
+        '<div class="group-title first">在職 <span class="count-pill">' + on.length + '</span></div>' + on.map(personRow).join('') +
+        '<div class="group-title">離職 <span class="count-pill red">' + off.length + '</span></div>' +
+        (off.length ? off.map(personRow).join('') : '<div class="empty">沒有離職人員。</div>') +
+        '<div class="hint">設為「離職」後：該員工無法再登入、不再出現在選單和目標表；過去的業績保留不變；她名下的顧客會自動進入主管畫面的「待承接顧客」。</div></div>';
+
+      // 療程細項
+      const byCat = {};
+      d.catalog.forEach(function (x, i) { (byCat[x.cat] || (byCat[x.cat] = [])).push(i); });
+      html += '<div class="card visible"><div class="section-title">💉　療程細項</div>' +
+        (Object.keys(byCat).length ? Object.keys(byCat).map(function (cat) {
+          return '<div class="group-title">' + esc(cat) + '</div><div class="jump-links" style="margin-top:4px;">' +
+            byCat[cat].map(function (i) {
+              return '<span class="mini-btn grey">' + esc(d.catalog[i].sub) +
+                ' <b style="cursor:pointer;" data-i="' + i + '" onclick="removeCatalog(this.dataset.i)">✕</b></span>';
+            }).join('') + '</div>';
+        }).join('') : '<div class="empty">還沒有細項。</div>') +
+        '<div class="row-2" style="margin-top:12px;"><div><label style="margin-top:0;">大類</label>' +
+        '<input type="text" id="adCat" list="adCatList" placeholder="例如：美療"></div>' +
+        '<div><label style="margin-top:0;">細項</label><input type="text" id="adSub" placeholder="例如：保濕導入"></div></div>' +
+        '<datalist id="adCatList"><option value="手術"></option><option value="微整"></option><option value="電音波"></option><option value="光療"></option><option value="美療"></option></datalist>' +
+        '<button type="button" class="add-item-btn" onclick="addCatalog()">＋ 加入清單</button>' +
+        '<button type="button" class="primary-btn" id="adCatBtn" style="margin-top:12px; box-shadow:none;" onclick="saveCatalogUI()"><span>儲存療程細項</span></button>' +
+        '<div class="hint">按 ✕ 或加入後，記得按「儲存療程細項」才會生效。刪除細項不影響已經輸入過的消費紀錄。</div></div>';
+
+      // 系統參數
+      html += '<div class="card visible"><div class="section-title">🧮　RFM 與系統參數</div>' +
+        d.params.map(function (p) {
+          return '<label>' + esc(p.label) + '<span style="font-weight:400;">（預設 ' + p.def.toLocaleString('en-US') + '）</span></label>' +
+            '<input type="number" inputmode="numeric" class="ad-param" data-key="' + esc(p.key) + '" value="' + esc(p.value) + '">';
+        }).join('') +
+        '<button type="button" class="primary-btn" id="adParamBtn" style="margin-top:16px; box-shadow:none;" onclick="saveParamsUI()"><span>儲存參數並重算等級</span></button>' +
+        '<div class="hint">儲存後會立刻用新門檻重算所有顧客的 R、F、M 與等級。</div></div>';
+
+      // 操作紀錄
+      html += '<div class="card visible"><div class="section-title">📜　操作紀錄（最近 50 筆）</div>' +
+        (d.audit.length ? d.audit.map(function (a) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(a.action) +
+            (a.target ? '：' + esc(a.target) : '') + '</span><span class="row-meta" style="margin:0; white-space:nowrap;">' + esc(a.time) + '</span></div>' +
+            '<div class="row-meta">操作人：' + esc(a.who) +
+            (a.before ? '<br>修改前：' + esc(a.before) : '') + (a.after ? '<br>修改後：' + esc(a.after) : '') + '</div></div>';
+        }).join('') : '<div class="empty">還沒有操作紀錄。</div>') +
+        '<div class="hint">完整紀錄在試算表的「操作紀錄」分頁，會永久保留。</div></div>';
+
+      document.getElementById('adminBody').innerHTML = html;
+      if (adminTempNotice) {
+        const t = adminTempNotice;
+        adminTempNotice = null;
+        document.getElementById('personForm').innerHTML = '<div class="done-bar" style="display:block;">✅ 已替 <b>' + esc(t.name) + '</b> 產生臨時密碼：' +
+          '<div class="temp-pw">' + esc(t.temp) + '</div>登入帳號：' + esc(t.email) +
+          '<br>請把帳號和臨時密碼親自交給她本人，第一次登入會要求改密碼。<b>這組密碼只會顯示這一次</b>，系統不會保存。' +
+          '<br><button class="link-btn" onclick="document.getElementById(\'personForm\').innerHTML=\'\'">我已抄下，關閉</button></div>';
+        document.getElementById('personForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    function resetPwUI(name) {
+      if (!confirm('要替「' + name + '」重設密碼嗎？她目前的密碼和所有登入會立即失效。')) return;
+      api()
+        .withSuccessHandler(function (r) { adminTempNotice = r; renderAdmin(); })
+        .withFailureHandler(function (err) { showToast(err.message); })
+        .adminResetPassword(name);
+    }
+
+    function showPersonForm(name) {
+      const d = adminData;
+      const p = name ? d.people.filter(function (x) { return x.name === name; })[0] : { name: '', email: '', branch: '', dept: '諮詢部', role: '諮詢師', status: '在職' };
+      const sel = function (id, list, val) {
+        return '<select id="' + id + '">' + list.map(function (v) { return '<option' + (v === val ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
+      };
+      document.getElementById('personForm').innerHTML = '<div class="sub-panel" style="margin-bottom:10px;">' +
+        '<div class="section-title" style="margin-bottom:4px;">' + (name ? '編輯：' + esc(name) : '新增人員') + '</div>' +
+        '<label style="margin-top:0;">姓名</label><input type="text" id="pfName" value="' + esc(p.name) + '"' + (name ? ' readonly style="background:#EFEAE4;"' : '') + '>' +
+        (name ? '<div class="hint" style="margin-top:4px;">姓名不能修改（會對不上過去的業績紀錄）。</div>' : '') +
+        '<label>Email（公司 Workspace 帳號）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="name@公司網域">' +
+        '<label>所屬診所</label><input type="text" id="pfBranch" list="pfBranchList" value="' + esc(p.branch) + '">' +
+        '<datalist id="pfBranchList">' + d.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
+        '<div class="row-2"><div><label>部門</label>' + sel('pfDept', d.depts, p.dept) + '</div>' +
+        '<div><label>權限</label>' + sel('pfRole', d.roles, p.role) + '</div></div>' +
+        '<label>狀態</label>' + sel('pfStatus', ['在職', '離職'], p.status) +
+        '<button type="button" class="primary-btn" id="pfBtn" style="margin-top:14px; box-shadow:none;" data-new="' + (name ? '' : '1') + '" onclick="savePersonUI(this)"><span>儲存</span></button>' +
+        (name ? '<button type="button" class="add-item-btn" data-name="' + esc(name) + '" onclick="resetPwUI(this.dataset.name)">🔑 重設密碼（產生臨時密碼）</button>' :
+          '<div class="hint">儲存後系統會產生一組臨時密碼，請交給她本人；第一次登入會要求改密碼。</div>') +
+        '<button type="button" class="link-btn" style="margin-top:8px;" onclick="document.getElementById(\'personForm\').innerHTML=\'\'">取消</button></div>';
+      document.getElementById('personForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function savePersonUI(btn) {
+      const payload = {
+        isNew: !!btn.dataset.new,
+        name: document.getElementById('pfName').value.trim(),
+        email: document.getElementById('pfEmail').value.trim(),
+        branch: document.getElementById('pfBranch').value.trim(),
+        dept: document.getElementById('pfDept').value,
+        role: document.getElementById('pfRole').value,
+        status: document.getElementById('pfStatus').value
+      };
+      if (payload.status === '離職' && !confirm('確定把「' + payload.name + '」設為離職？她將無法登入，名下顧客會進入待承接清單。')) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function (r) {
+          showToast(r && r.warn ? r.warn : '人員資料已儲存');
+          perfStale = true;
+          adminTempNotice = r && r.temp ? r : null;
+          loadAdmin();
+        })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存</span>'; showToast(err.message); })
+        .savePerson(payload);
+    }
+
+    // ===================== 未消耗療程（POS） =====================
+    let customerCourses = [];
+
+    function loadCustomerCourses_(customer) {
+      const box = document.getElementById('courseBox');
+      box.style.display = 'none';
+      customerCourses = [];
+      api().withSuccessHandler(function (res) {
+        customerCourses = res.list || [];
+        if (!customerCourses.length) return;
+        const up = Object.keys(res.updated).map(function (b) { return b + ' ' + res.updated[b]; }).join('、');
+        const total = customerCourses.reduce(function (a, c) { return a + c.estAmount; }, 0);
+        box.innerHTML = '<div class="section-title" style="margin-bottom:4px;">📦　未使用課程 <span style="font-size:14px; color:var(--text-muted);">剩餘 ' + money(total) + '</span></div>' +
+          '<div class="hint" style="margin-top:0;">POS 資料日期：' + esc(up) + '，之後在 CRM 記錄的使用已自動扣除。點一下＝這次使用這項。</div>' +
+          customerCourses.map(function (c, i) {
+            return '<div class="candidate" style="margin:8px 0 0; padding:10px 12px;" data-i="' + i + '" onclick="useCourse(this.dataset.i)"><div class="info">' +
+              '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
+              '<div class="meta">' + (c.used ? '預估剩 <b>' + c.est + '</b> 次（POS ' + c.left + ' 次，' + esc(c.dataDay) + ' 後已用 ' + c.used + ' 次）'
+                : '剩 <b>' + c.left + '</b> 次') + (c.price ? '・單價 ' + money(c.price) + '・剩餘 ' + money(c.estAmount) : '') +
+              '・' + esc(c.tab) + (customerCourses.length && c.branch ? '・' + esc(c.branch) : '') +
+              (c.byName ? '・<span style="color:#9B5F4D;">POS 無手機，依姓名比對</span>' : '') + '</div></div></div>';
+          }).join('');
+        box.style.display = 'block';
+      }).withFailureHandler(function () {}).getCustomerCourses(customer.phone, customer.name);
+    }
+
+    function useCourse(i) {
+      const c = customerCourses[Number(i)];
+      if (!c) return;
+      document.getElementById('txPayType').value = '服務';
+      onPayTypeChange();
+      if (/美療/.test(c.big) || (itemCatalog['美療'] || []).indexOf(c.tab) !== -1) {
+        document.getElementById('cat1').value = '美療';
+        onCatChange(1);
+        const sub = document.getElementById('sub1');
+        if (Array.prototype.some.call(sub.options, function (o) { return o.value === c.tab; })) sub.value = c.tab;
+      }
+      document.getElementById('item1').value = c.small || c.tab;
+      document.querySelectorAll('#courseBox .candidate').forEach(function (d) { d.classList.remove('selected'); });
+      document.querySelector('#courseBox .candidate[data-i="' + i + '"]').classList.add('selected');
+      showToast('已帶入「' + (c.small || c.tab) + '」，款項類型＝服務（不收費）');
+    }
+
+    // ---------- 管理員：讀 POS Excel ----------
+    let posParsed = null;
+
+    function loadSheetJs_(cb) {
+      if (window.XLSX) return cb();
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = cb;
+      s.onerror = function () { showToast('讀取 Excel 元件失敗，請檢查網路後再試'); };
+      document.head.appendChild(s);
+    }
+
+    function readPosFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('posPreview');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const rows = [];
+            const tabs = {};
+            let branch = '';
+            wb.SheetNames.forEach(function (tab) {
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+                const line = aoa[i].map(function (x) { return String(x).replace(/\s+/g, ''); });
+                if (line.some(function (x) { return x.indexOf('手機') === 0; }) && line.some(function (x) { return x.indexOf('剩餘') === 0; })) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              for (let i = 0; i < hi && !branch; i++) {
+                const m = aoa[i].join(' ').match(/([^\s|｜]+診所)/);
+                if (m) branch = m[1];
+              }
+              const h = aoa[hi].map(function (x) { return String(x).replace(/\s+/g, ''); });
+              const col = function () {
+                for (let a = 0; a < arguments.length; a++) {
+                  const k = arguments[a];
+                  const idx = h.findIndex(function (x) { return x.indexOf(k) === 0; });
+                  if (idx >= 0) return idx;
+                }
+                return -1;
+              };
+              const c = { dup: col('重複'), no: col('單號'), date: col('日期'), status: col('狀態'), cid: col('編號', '客編'),
+                name: col('顧客', '姓名'), phone: col('手機'), big: col('項目(大)', '項目（大）'), mid: col('項目(中)', '項目（中）'),
+                small: col('項目(小)', '項目（小）'), kind: col('種類'), left: col('剩餘數', '剩餘堂', '剩餘次'),
+                price: col('單價'), amount: col('剩餘費用', '剩餘金額') };
+              for (let i = hi + 1; i < aoa.length; i++) {
+                const r = aoa[i];
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                if (!g('name') && !g('phone')) continue;
+                rows.push({ tab: tab, dup: g('dup'), no: g('no'), date: g('date'), status: g('status'), cid: g('cid'), name: g('name'),
+                  phone: g('phone'), big: g('big'), mid: g('mid'), small: g('small'), kind: g('kind'),
+                  left: g('left'), price: g('price'), amount: g('amount') });
+                tabs[tab] = (tabs[tab] || 0) + 1;
+              }
+            });
+            posParsed = { rows: rows, fileName: file.name };
+            const total = rows.reduce(function (a, r) { return a + (Number(String(r.amount).replace(/[,$]/g, '')) || 0); }, 0);
+            box.innerHTML = rows.length
+              ? '<div class="sub-panel">讀到 <b>' + rows.length + '</b> 筆、<b>' + Object.keys(tabs).length + '</b> 個分頁，未消耗金額約 <b>' + money(total) + '</b>' +
+                '<div class="hint">' + Object.keys(tabs).map(function (t) { return esc(t) + ' ' + tabs[t]; }).join('、') + '</div>' +
+                '<label>這份資料是哪一家診所</label><input type="text" id="posBranch" list="pfBranchList2" value="' + esc(branch) + '">' +
+                '<label>POS 資料截止日（從 POS 匯出的那一天）</label><input type="date" id="posDataDate" value="' + localDateStr() + '">' +
+                '<div class="hint">這天之後在 CRM 記錄的「服務（不收費）」，會自動從剩餘次數扣掉。</div>' +
+                '<datalist id="pfBranchList2">' + adminData.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
+                '<button type="button" class="primary-btn" id="posBtn" style="margin-top:12px; box-shadow:none;" onclick="submitPos()"><span>確認匯入</span></button></div>'
+              : '<div class="empty">沒有讀到資料。請確認是 POS 匯出的未消耗療程明細（要有「手機」和「剩餘數」欄）。</div>';
+          } catch (err) {
+            box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>';
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function submitPos() {
+      if (!posParsed) return;
+      const branch = document.getElementById('posBranch').value.trim();
+      if (!branch) { showToast('請填這份資料是哪一家診所'); return; }
+      if (!confirm('會用這份檔案取代「' + branch + '」目前所有的未消耗療程資料，確定匯入？')) return;
+      const btn = document.getElementById('posBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>匯入中...</span>';
+      api()
+        .withSuccessHandler(function (r) {
+          showToast('已匯入 ' + r.count + ' 筆（' + branch + '）');
+          posParsed = null;
+          loadAdmin();
+        })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
+        .importPosCourses({ branch: branch, fileName: posParsed.fileName, rows: posParsed.rows,
+          dataDate: document.getElementById('posDataDate').value });
+    }
+
+    // ---------- 主管總覽：未消耗療程 ----------
+    function loadCourseSummary_(scope) {
+      api().withSuccessHandler(function (s) {
+        const box = document.getElementById('courseSumCard');
+        if (!box) return;
+        if (!s.count) {
+          box.innerHTML = '<div class="card visible"><div class="section-title">📦　未消耗療程（POS）</div><div class="empty">還沒有匯入 POS 資料，請管理員到「系統管理」匯入。</div></div>';
+          return;
+        }
+        const up = Object.keys(s.updated).filter(function (b) { return !s.scope || b === s.scope; })
+          .map(function (b) { return b + ' ' + s.updated[b]; }).join('、');
+        const max = Math.max.apply(null, s.byItem.map(function (x) { return x.amount; }).concat([1]));
+        box.innerHTML = '<div class="card visible"><div class="section-title">📦　未消耗療程（POS）' +
+          '<span class="amount">' + money(s.estTotal) + '</span></div>' +
+          '<div class="hint" style="margin-top:0;">' + s.customers + ' 位顧客、' + s.count + ' 筆課程　POS 資料日期：' + esc(up) +
+          (s.used ? '<br>POS 金額 ' + money(s.total) + '，扣掉之後 CRM 已記錄的 ' + s.used + ' 次使用＝預估 ' + money(s.estTotal) : '') + '</div>' +
+          (s.byBranch.length ? '<div class="group-title">各診所</div>' + s.byBranch.map(function (b) {
+            return '<div class="sub-row" style="padding-left:0;"><span>' + esc(b.name) + '（' + b.count + ' 筆）</span><b>' + money(b.estAmount) + '</b></div>';
+          }).join('') : '') +
+          '<div class="group-title">各品項</div>' + s.byItem.map(function (x) {
+            return '<div class="hbar-row"><span class="hb-name" style="width:84px;">' + esc(x.name) + '</span>' +
+              '<span class="hb-track"><div style="width:' + Math.max(x.estAmount, 0) / max * 100 + '%"></div></span>' +
+              '<span class="hb-val"><b>' + money(x.estAmount) + '</b>／' + x.est + ' 次</span></div>';
+          }).join('') + '</div>';
+      }).withFailureHandler(function () {}).getCourseSummary(scope);
+    }
+
+    function trimCells() {
+      if (!confirm('會刪除每個分頁資料下方多餘的空白列（保留 200 列緩衝）和右側空白欄，資料不會被刪除。確定執行？')) return;
+      const btn = document.getElementById('trimBtn');
+      btn.disabled = true;
+      btn.textContent = '清除中，資料多時約需 1 分鐘...';
+      api()
+        .withSuccessHandler(function (r) { showToast('已釋出約 ' + r.freed.toLocaleString('en-US') + ' 格'); loadAdmin(); })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.textContent = '🧹 清除多餘空白列'; showToast(err.message); })
+        .crmTrimEmptyCells();
+    }
+
+    function addCatalog() {
+      const cat = document.getElementById('adCat').value.trim();
+      const sub = document.getElementById('adSub').value.trim();
+      if (!cat || !sub) { showToast('請填大類和細項'); return; }
+      adminData.catalog.push({ cat: cat, sub: sub });
+      renderAdmin();
+    }
+
+    function removeCatalog(i) {
+      adminData.catalog.splice(Number(i), 1);
+      renderAdmin();
+    }
+
+    function saveCatalogUI() {
+      const btn = document.getElementById('adCatBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存療程細項</span>';
+          showToast('療程細項已更新');
+          api().withSuccessHandler(function (c) { itemCatalog = c || {}; }).getItemCatalog();
+        })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存療程細項</span>'; showToast(err.message); })
+        .saveCatalog(adminData.catalog);
+    }
+
+    function saveParamsUI() {
+      const values = {};
+      document.querySelectorAll('.ad-param').forEach(function (el) { values[el.dataset.key] = el.value; });
+      const btn = document.getElementById('adParamBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存並重算中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存參數並重算等級</span>';
+          showToast('參數已儲存，等級已重算');
+          perfStale = true;
+        })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存參數並重算等級</span>'; showToast(err.message); })
+        .saveParams(values);
+    }
+
+    function goManagerView() {
+      switchViewAs(perfUser.group ? '__team__' : '__scope__:' + perfUser.branch);
+    }
+
+    function pctOf_(a, b) { return b ? Math.round(a / b * 100) : null; }
+
+    function pctText_(a, b) {
+      const p = pctOf_(a, b);
+      return p === null ? '<span style="color:var(--text-muted);">未設目標</span>' : '<b class="' + (p >= 100 ? 'up' : '') + '">' + p + '%</b>';
+    }
+
+    // ---------- 主管：全店總覽 ----------
+    function renderTeam(d) {
+      const s = d.store, t = s.target;
+      let html = '<div class="perf-head"><span>' + whoSelect_(viewAs) + '　' + d.updatedAt + ' 更新</span>' +
+        '<button class="link-btn" onclick="loadPerf()">重新整理</button></div>';
+
+      html += '<button type="button" class="add-item-btn" style="margin:0 0 14px; background:var(--secondary-light); color:#4C6142;" ' +
+        'onclick="switchViewAs(perfUser.name)">👤 回到我的畫面（我自己的業績）</button>';
+
+      html += '<div class="card visible"><div class="row-2" style="align-items:end;">' +
+        '<div><label style="margin-top:0;">查看月份</label><input type="month" value="' + d.monthKey + '" onchange="teamMonth=this.value; loadPerf();"></div>' +
+        '<div><label style="margin-top:0;">部門</label><select onchange="teamDept=this.value; loadPerf();">' +
+          ['', '諮詢部', '美容部'].map(function (v) {
+            return '<option value="' + v + '"' + (d.dept === v ? ' selected' : '') + '>' + (v || '全部部門') + '</option>';
+          }).join('') + '</select></div></div>' +
+        '<div class="hint">點下方任一位人員可看她的明細</div></div>';
+
+      // 全店
+      const growth = d.growthPct === null ? '' : '<br>' + (d.growthPct >= 0
+        ? '<span class="up">▲ ' + d.growthPct + '%</span>' : '<span class="down">▼ ' + Math.abs(d.growthPct) + '%</span>') + '　比上月同期';
+      html += '<div class="card visible hero"><div class="label">' + esc(d.monthLabel) + '　' + esc(d.scopeLabel) + '業績</div>' +
+        '<div class="big">' + money(s.s) + '</div>' +
+        (t.total ? '<div class="progress"><div style="width:' + Math.min(pctOf_(s.s, t.total), 100) + '%"></div></div>' +
+          '<div class="hint">' + esc(d.scopeLabel) + '目標 <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
+          (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + ' 天' : '') : '') + '</div>'
+          : '<div class="hint">尚未設定本月目標</div>') +
+        '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth + '</div></div>';
+
+      html += '<div class="card visible"><div class="kpi-grid">' +
+        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>新客 ' + s.nc + ' 位') +
+        kpiBox('舊客業績', money(s.os), t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') +
+        kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>服務（不收費）' + s.sv + ' 人次') +
+        kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
+        '</div></div>';
+
+      // Google 評論：每個人目前進度
+      const rvList = d.staff.filter(function (p) { return p.rv > 0 || p.target.review > 0; }).slice().sort(function (a, b) {
+        const pa = a.target.review ? a.rv / a.target.review : -1, pb = b.target.review ? b.rv / b.target.review : -1;
+        return pb - pa || b.rv - a.rv;
+      });
+      html += '<div class="card visible"><div class="section-title">⭐　Google 評論進度' +
+        '<span style="font-size:15px; color:var(--text-muted);">合計 <b style="color:var(--text); font-size:19px;">' + s.rv + '</b>' +
+        (t.review ? ' / ' + t.review : '') + ' 則</span></div>' +
+        (rvList.length ? rvList.map(function (p) {
+          const tr = p.target.review;
+          const pc = tr ? Math.round(p.rv / tr * 100) : null;
+          return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(p.name) + '</span>' +
+            '<span class="amount">' + p.rv + (tr ? ' / ' + tr : '') + ' 則' +
+            (pc !== null ? '　<span class="' + (pc >= 100 ? 'up' : '') + '" style="' + (pc >= 100 ? '' : 'color:var(--text-muted);') + '">' + pc + '%</span>' : '') + '</span></div>' +
+            (tr ? '<div class="progress" style="height:8px; margin:6px 0 0;"><div style="width:' + Math.min(pc, 100) + '%"></div></div>'
+                : '<div class="row-meta">未設評論目標</div>') + '</div>';
+        }).join('') : '<div class="empty">這個月還沒有人登記評論，也還沒設定評論目標。</div>') + '</div>';
+
+      // 療程類別業績與佔比
+      if (d.categories.length) {
+        html += '<div class="card visible"><div class="section-title">💉　療程類別業績與佔比</div>' + d.categories.map(function (c) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(c.name) + '</span>' +
+            '<span class="amount' + (c.s < 0 ? ' neg' : '') + '">' + money(c.s) + '　<span style="color:var(--text-muted); font-weight:700;">' + c.share + '%</span></span></div>' +
+            '<div class="progress" style="height:8px; margin:6px 0 2px;"><div style="width:' + Math.min(c.share, 100) + '%"></div></div>' +
+            '<div class="row-meta">' + c.c + ' 人次</div>' +
+            (c.subs && c.subs.length ? c.subs.map(function (x) {
+              return '<div class="sub-row"><span>└ ' + esc(x.name) + '</span><span><b>' + money(x.s) + '</b>　' + x.share + '%・' + x.c + ' 人次</span></div>';
+            }).join('') : '') + '</div>';
+        }).join('') +
+        '<div class="hint">佔比＝該類別業績 ÷ 各類別業績合計；一筆消費有多個療程時，金額算在第一個療程大類。</div></div>';
+      }
+
+      // 各診所（只有集團總覽才顯示）
+      if (d.branches.length) {
+        const bmax = Math.max.apply(null, d.branches.map(function (b) { return b.s; }).concat([1]));
+        html += '<div class="card visible"><div class="section-title">🏥　各診所</div>' + d.branches.map(function (b) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(b.name) + '</span><span class="amount">' + money(b.s) + '</span></div>' +
+            '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.max(b.s, 0) / bmax * 100 + '%"></div></div>' +
+            '<div class="row-meta">新客 ' + money(b.ns) + '（' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次</div></div>';
+        }).join('') + '</div>';
+      }
+
+      // 每位諮詢師
+      html += '<div class="card visible"><div class="section-title">👥　' + esc(d.scope ? d.scope + ' ' : '') + '諮詢師業績（依總業績排序）</div>' +
+        (d.staff.length ? d.staff.map(function (p, i) {
+          const tg = p.target;
+          const click = p.canView ? ' style="cursor:pointer;" data-name="' + esc(p.name) + '" onclick="switchViewAs(this.dataset.name)"' : '';
+          return '<div class="row-item"' + click + '>' +
+            '<div class="row-top"><span class="row-name">' + (i + 1) + '. ' + esc(p.name) +
+            (d.dept || !p.dept ? '' : '<span class="dept-tag">' + esc(p.dept) + '</span>') + '</span>' +
+            '<span class="amount">' + money(p.s) + (p.canView ? ' <span style="color:var(--text-muted); font-weight:400;">›</span>' : '') + '</span></div>' +
+            (tg.total ? '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.min(pctOf_(p.s, tg.total), 100) + '%"></div></div>' : '') +
+            '<div class="row-meta">總目標 ' + (tg.total ? money(tg.total) + '・' + pctText_(p.s, tg.total) : '未設') + '<br>' +
+            '新客 <b>' + money(p.ns) + '</b>（' + pctText_(p.ns, tg.newT) + '・' + p.nc + ' 位）<br>' +
+            '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '）<br>' +
+            '成交 ' + p.c + ' 人次' + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') + '</div></div>';
+        }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
+
+      html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
+      html += targetCardHtml();
+      document.getElementById('perfBody').innerHTML = html;
+      loadTargets();
+      loadTakeoverCards_();
+      loadCourseSummary_(d.scope);
+    }
+
+    function renderPerf(d) {
+      const k = d.kpi, t = d.target;
+      let html = '';
+
+      const who = whoSelect_(d.name);
+      html += '<div class="perf-head"><span>' + who + '　' + d.monthLabel + '　' + d.updatedAt + ' 更新</span>' +
+        '<button class="link-btn" onclick="loadPerf()">重新整理</button></div>';
+      if (d.viewingOther) {
+        html += '<div class="done-bar" style="display:block;">你正在以主管身分查看 <b>' + esc(d.name) + '</b> 的業績。' +
+          '<br><button class="link-btn" onclick="goManagerView()">← 回到' + (perfUser.group ? '集團' : '店主管') + '畫面</button></div>';
+      } else if (perfUser.admin) {
+        html += '<button type="button" class="add-item-btn" style="margin:0 0 14px;" onclick="goManagerView()">🏥 切換到' +
+          (perfUser.group ? '集團主管' : '店主管') + '畫面（看全部人狀態）</button>';
+      }
+
+      // --- 本月業績 & 目標 ---
+      let growth = '上月同期沒有業績可比較';
+      if (k.growthPct !== null) {
+        growth = (k.growthPct >= 0
+          ? '<span class="up">▲ ' + k.growthPct + '%</span>'
+          : '<span class="down">▼ ' + Math.abs(k.growthPct) + '%</span>') + '　比上月同期（' + money(k.lastSame.s) + '）';
+      }
+      let targetHtml;
+      if (t.amount > 0) {
+        targetHtml = '<div class="progress"><div style="width:' + Math.min(t.pct, 100) + '%"></div></div>' +
+          '<div class="hint">目標 <b>' + money(t.amount) + '</b>，已達成 <b>' + t.pct + '%</b></div>' +
+          (t.remaining > 0
+            ? '<div class="hint">還差 <b>' + money(t.remaining) + '</b>，剩 ' + d.daysLeft + ' 天，平均每天要做 <b>' + money(t.dailyNeeded) + '</b></div>'
+            : '<div class="hint good">🎉 本月目標已達成，超出 ' + money(k.month.s - t.amount) + '</div>');
+      } else {
+        targetHtml = '<div class="hint">本月還沒設定目標，請主管在「諮詢師設定」分頁填寫。</div>';
+      }
+      html += '<div class="card visible hero">' +
+        '<div class="label">' + d.monthLabel + '累積業績</div>' +
+        '<div class="big">' + money(k.month.s) + '</div>' + targetHtml +
+        '<div class="hint">' + growth + '<br>依目前速度，月底預估 <b>' + money(k.forecast) + '</b>' +
+        (d.rank ? '<br>🏅 本月排名第 <b>' + d.rank.rank + '</b> 名（共 ' + d.rank.total + ' 位）' : '') +
+        '</div></div>';
+
+      // --- 新客／舊客 ---
+      const no = d.newOld;
+      html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
+        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位（收到尾款或全額才算結案）') +
+        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '') + '</div>';
+
+      // --- Google 評論 ---
+      html += reviewCardHtml(d.reviews);
+
+      // --- KPI ---
+      html += '<div class="card visible"><div class="kpi-grid">' +
+        kpiBox('今日', money(k.today.s), k.today.c + ' 人次') +
+        kpiBox('本週（週一起）', money(k.week.s), k.week.c + ' 人次') +
+        kpiBox('本月成交', k.month.c + ' 人次', '服務（不收費）' + (d.serviceCount || 0) + ' 人次') +
+        kpiBox('本月平均客單', money(k.avgTicket), '上月全月 ' + money(k.lastMonth.s)) +
+        '</div></div>';
+
+      // --- 每日業績 & 療程類別 ---
+      const max = Math.max.apply(null, d.daily.concat([1]));
+      const bars = d.daily.map(function (v, i) {
+        const cls = 'bar' + (v > 0 ? ' has' : '') + (i + 1 === d.day ? ' today' : '');
+        return '<div class="' + cls + '" style="height:' + Math.max(v / max * 100, 3) + '%" title="' + (i + 1) + '日 ' + money(v) + '"></div>';
+      }).join('');
+      let catHtml = '';
+      if (d.categories.length) {
+        const cmax = Math.max.apply(null, d.categories.map(function (c) { return c.amount; }).concat([1]));
+        catHtml = '<div class="group-title">療程類別（本月業績／人次）</div>' + d.categories.map(function (c) {
+          return '<div class="hbar-row"><span class="hb-name">' + esc(c.name) + '</span>' +
+            '<span class="hb-track"><div style="width:' + Math.max(c.amount, 0) / cmax * 100 + '%"></div></span>' +
+            '<span class="hb-val"><b class="' + (c.amount < 0 ? 'neg' : '') + '">' + money(c.amount) + '</b>／' + c.count + '</span></div>';
+        }).join('');
+      }
+      html += '<div class="card visible"><div class="section-title">📈　本月每日業績</div>' +
+        '<div class="chart">' + bars + '</div>' +
+        '<div class="chart-axis"><span>1日</span><span>' + Math.ceil(d.daysInMonth / 2) + '日</span><span>' + d.daysInMonth + '日</span></div>' +
+        catHtml + '</div>';
+
+      // --- 術後關懷待辦 ---
+      const f = d.followups;
+      const totalTodo = f.overdueCount + f.today.length + f.upcoming.length;
+      html += '<div class="card visible"><div class="section-title">📋　我的關懷待辦</div>';
+      if (!totalTodo) {
+        html += '<div class="empty">目前沒有待處理的術後關懷。送出消費後記得順手排一筆，回診率會差很多。</div>';
+      } else {
+        html += fuGroup('🔴 逾期未聯繫', f.overdue, 'overdue', f.overdueCount, true, true) +
+          fuGroup('🟡 今天要聯繫', f.today, 'today', f.today.length, false, f.overdue.length === 0) +
+          fuGroup('🗓 未來 7 天', f.upcoming, 'upcoming', f.upcoming.length, false, false);
+      }
+      html += '</div>';
+
+      // --- 我的顧客 ---
+      const c = d.customers;
+      html += '<div class="card visible"><div class="section-title">👥　我的顧客（共 ' + c.total + ' 位）</div>';
+      html += '<div class="meta" style="display:flex; flex-wrap:wrap; gap:7px; margin:-2px 0 6px;">' +
+        ['A', 'B', 'C', 'D'].map(function (g) {
+          return '<span class="tag grade-' + g.toLowerCase() + '">' + g + ' 級 ' + c.gradeCount[g] + ' 位</span>';
+        }).join('') + '</div>';
+      html += '<div class="group-title first">🎂 本月壽星 <span class="count-pill">' + c.birthdays.length + '</span></div>';
+      html += c.birthdays.length ? c.birthdays.map(function (x) {
+        return custItem(x, '生日 ' + esc(x.birthday) + (x.last ? '　上次到診 ' + esc(x.last) : '　尚未消費'), '生日關懷');
+      }).join('') : '<div class="empty">這個月沒有壽星。</div>';
+
+      html += '<div class="group-title">💤 超過 ' + (c.sleepDays || 90) + ' 天沒回來 <span class="count-pill red">' + c.sleepingCount + '</span></div>';
+      if (c.sleeping.length) {
+        if (c.sleepingCount > c.sleeping.length) html += '<div class="empty">依累積消費排序，先顯示前 ' + c.sleeping.length + ' 位。</div>';
+        html += c.sleeping.map(function (x) {
+          return custItem(x, x.days + ' 天前來過（' + esc(x.last) + '）　累積 ' + money(x.total), '沉睡喚醒');
+        }).join('');
+      } else {
+        html += '<div class="empty">沒有沉睡顧客，維持得很好。</div>';
+      }
+      if (c.neverBought) html += '<div class="empty" style="margin-top:8px;">另有 ' + c.neverBought + ' 位建檔後還沒消費過。</div>';
+      html += '</div>';
+
+      // --- 本月成交明細 ---
+      html += '<div class="card visible"><div class="section-title">🧾　本月成交明細</div>';
+      html += d.recent.length ? d.recent.map(function (r) {
+        const pt = (r.custType === '新客' ? '<span class="new-tag">新客</span>' : '') +
+          (r.payType && r.payType !== '全額' ? '<span class="pay-tag">' + esc(r.payType) + '</span>' : '');
+        return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(r.customer || '（未填姓名）') + pt + '</div>' +
+          '<div class="row-meta">' + esc(r.date) + (r.items ? '　' + esc(r.items) : '') + '</div></div>' +
+          '<div class="amount' + (r.amount < 0 ? ' neg' : '') + '">' + money(r.amount) + '</div></div></div>';
+      }).join('') : '<div class="empty">本月還沒有成交紀錄。</div>';
+      if (d.recent.length >= 15) html += '<div class="empty">只顯示最近 15 筆。</div>';
+      html += '</div>';
+
+      document.getElementById('perfBody').innerHTML = html;
+    }
+
+    function noBlock(label, sales, target, pct, foot) {
+      return '<div class="no-block"><div class="no-head"><span class="k-label" style="font-weight:700; color:var(--text-muted);">' + label + '</span>' +
+        '<span class="v">' + money(sales) + '</span></div>' +
+        (target > 0
+          ? '<div class="progress"><div style="width:' + Math.min(pct, 100) + '%"></div></div>' +
+            '<div class="hint" style="margin-top:6px;">目標 <b>' + money(target) + '</b>，已達成 <b>' + pct + '%</b>' +
+            (sales < target ? '，還差 <b>' + money(target - sales) + '</b>' : '　🎉 已達標') + '</div>'
+          : '<div class="hint" style="margin-top:0;">尚未設定目標</div>') +
+        (foot ? '<div class="hint" style="margin-top:4px;">' + foot + '</div>' : '') + '</div>';
+    }
+
+    // ---------- Google 評論 ----------
+    function reviewCardHtml(rv) {
+      let h = '<div class="card visible" id="reviewCard"><div class="section-title">⭐　Google 評論（本月）</div>' +
+        '<div class="kpi-grid" style="margin-bottom:10px;">' +
+          kpiBox('我的評論', rv.count + ' 則', rv.target ? '目標 ' + rv.target + ' 則' : '尚未設定目標') +
+          kpiBox('全院總數', rv.clinicTotal + ' 則', '所有人員合計') +
+        '</div>';
+      if (rv.target) h += '<div class="progress" style="margin-bottom:10px;"><div style="width:' + Math.min(rv.count / rv.target * 100, 100) + '%"></div></div>';
+      h += '<button type="button" class="add-item-btn" style="margin-top:0;" onclick="togglePerfReview()">＋ 客人留了評論，登記一則</button>' +
+        '<div id="perfReviewForm" class="sub-panel" style="display:none;">' +
+          '<div class="row-2"><div><label style="margin-top:0;">顧客姓名</label><input type="text" id="prCustomer"></div>' +
+          '<div><label style="margin-top:0;">評論日期</label><input type="date" id="prDate"></div></div>' +
+          '<label>Google 上的顯示名稱</label><input type="text" id="prGoogleName" placeholder="方便主管核對">' +
+          '<label>備註</label><input type="text" id="prNote" placeholder="選填">' +
+          '<button type="button" class="primary-btn" id="prBtn" style="margin-top:12px; box-shadow:none;" onclick="submitPerfReview()"><span>登記評論</span></button>' +
+        '</div>';
+      if (rv.list.length) {
+        h += '<div class="group-title">本月已登記</div>' + rv.list.map(function (r) {
+          return '<div class="row-item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><div>' +
+            '<div class="row-name" style="font-size:15.5px;">' + esc(r.customer || r.googleName) + '</div>' +
+            '<div class="row-meta">' + esc(r.date) + (r.googleName && r.customer ? '　Google：' + esc(r.googleName) : '') + '</div></div>' +
+            (r.canDelete ? '<button class="mini-btn grey" data-row="' + r.row + '" data-id="' + esc(r.id) + '" onclick="undoReview(this)">' + (perfUser && perfUser.admin ? '刪除' : '撤回') + '</button>' : '') +
+            '</div>';
+        }).join('');
+      }
+      return h + '</div>';
+    }
+
+    function togglePerfReview() {
+      const f = document.getElementById('perfReviewForm');
+      f.style.display = f.style.display === 'none' ? 'block' : 'none';
+      document.getElementById('prDate').value = localDateStr();
+    }
+
+    function sendReview_(payload, btn, label, done) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>登記中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>' + label + '</span>';
+          showToast('已登記 Google 評論 ⭐');
+          perfStale = true;
+          done();
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>' + label + '</span>';
+          showToast('登記失敗：' + err.message);
+        })
+        .logGoogleReview(Object.assign({ viewAs: viewAs }, payload));
+    }
+
+    function submitPerfReview() {
+      sendReview_({
+        customer: document.getElementById('prCustomer').value,
+        googleName: document.getElementById('prGoogleName').value,
+        date: document.getElementById('prDate').value,
+        note: document.getElementById('prNote').value
+      }, document.getElementById('prBtn'), '登記評論', function () { loadPerf(); });
+    }
+
+    function toggleEntryReview() {
+      const p = document.getElementById('entryReviewPanel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      document.getElementById('erDate').value = localDateStr();
+      if (p.style.display === 'block') p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function submitEntryReview() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      sendReview_({
+        customer: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        googleName: document.getElementById('erGoogleName').value,
+        date: document.getElementById('erDate').value,
+        note: document.getElementById('erNote').value
+      }, document.getElementById('erBtn'), '登記評論', function () {
+        document.getElementById('entryReviewPanel').style.display = 'none';
+        ['erGoogleName', 'erNote'].forEach(function (id) { document.getElementById(id).value = ''; });
+      });
+    }
+
+    function undoReview(btn) {
+      btn.disabled = true;
+      api()
+        .withSuccessHandler(function () { showToast('已撤回'); loadPerf(); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast('撤回失敗：' + err.message); })
+        .deleteGoogleReview({ row: btn.dataset.row, id: btn.dataset.id, viewAs: viewAs });
+    }
+
+    // ---------- 主管：設定業績目標 ----------
+    function targetCardHtml() {
+      const m = localDateStr().slice(0, 7);
+      return '<div class="card visible" id="targetCard"><div class="section-title">🎯　設定業績目標' + (perfUser.group ? '（集團主管）' : '（' + esc(perfUser.branch) + '）') + '</div>' +
+        '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">月份</label>' +
+        '<input type="month" id="tgMonth" value="' + m + '" onchange="loadTargets()"></div>' +
+        '<div class="hint" style="margin:0 0 6px;">總目標留空＝新客＋舊客</div></div>' +
+        '<div id="tgTable" style="margin-top:12px;"><div class="empty">讀取中...</div></div>' +
+        '<button type="button" class="primary-btn" id="tgBtn" style="margin-top:14px; box-shadow:none;" onclick="saveTargets()"><span>儲存目標</span></button></div>';
+    }
+
+    function loadTargets() {
+      const box = document.getElementById('tgTable');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api()
+        .withSuccessHandler(function (rows) {
+          box.innerHTML = '<div class="tgt-grid"><span class="th">諮詢師</span><span class="th">總業績</span><span class="th">新客</span><span class="th">舊客</span><span class="th">評論數</span>' +
+            rows.map(function (r) {
+              const inp = function (k, v) { return '<input type="number" inputmode="numeric" data-k="' + k + '" value="' + esc(v) + '" placeholder="0">'; };
+              return '<span class="tg-name" style="font-weight:700;">' + esc(r.name) + '</span>' +
+                inp('total', r.total) + inp('newT', r.newT) + inp('oldT', r.oldT) + inp('review', r.review);
+            }).join('') + '</div>';
+        })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getTargetsForMonth(document.getElementById('tgMonth').value);
+    }
+
+    function saveTargets() {
+      const grid = document.querySelector('#tgTable .tgt-grid');
+      if (!grid) return;
+      const rows = [];
+      let cur = null;
+      Array.prototype.forEach.call(grid.children, function (el) {
+        if (el.classList.contains('tg-name')) { cur = { name: el.textContent }; rows.push(cur); }
+        else if (cur && el.dataset.k) cur[el.dataset.k] = el.value;
+      });
+      const btn = document.getElementById('tgBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存目標</span>';
+          showToast('目標已儲存');
+          loadPerf();
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存目標</span>';
+          showToast('儲存失敗：' + err.message);
+        })
+        .saveTargetsForMonth(document.getElementById('tgMonth').value, rows);
+    }
+
+    function kpiBox(label, value, sub) {
+      return '<div class="kpi"><div class="k-label">' + label + '</div><div class="k-value">' + value + '</div><div class="k-sub">' + sub + '</div></div>';
+    }
+
+    function fuGroup(title, list, kind, count, isRed, isFirst) {
+      if (!count) return '';
+      let h = '<div class="group-title' + (isFirst ? ' first' : '') + '">' + title +
+        ' <span class="count-pill' + (isRed ? ' red' : '') + '">' + count + '</span></div>';
+      if (kind === 'overdue' && count > list.length) h += '<div class="empty">先顯示最早的 ' + list.length + ' 筆。</div>';
+      return h + list.map(function (x) { return fuItemHtml(x, kind); }).join('');
+    }
+
+    function fuItemHtml(f, kind) {
+      const when = kind === 'overdue' ? '⏰ ' + esc(f.date) + '（晚了 ' + f.lateDays + ' 天）'
+        : kind === 'today' ? '📅 今天' : '📅 ' + esc(f.date);
+      const what = [f.stage, f.item].filter(Boolean).join('・');
+      return '<div class="row-item fu-item" data-row="' + f.row + '" data-phone="' + esc(f.phone) + '">' +
+        '<div class="row-top"><div><div class="row-name">' + esc(f.customer || '（未填姓名）') + '</div>' +
+        '<div class="row-meta">' + when + (f.phone ? '　📱 ' + esc(f.phone) : '') + (what ? '<br>' + esc(what) : '') + (f.note ? '<br>📝 ' + esc(f.note) : '') + '</div></div></div>' +
+        '<div class="row-actions">' +
+          '<button class="mini-btn" onclick="fuAct(this,\'已關懷\')">✓ 已關懷</button>' +
+          '<button class="mini-btn" onclick="fuAct(this,\'已預約回診\')">📅 已約回診</button>' +
+          '<button class="mini-btn grey" onclick="fuAct(this,\'改期\')">改期</button>' +
+          '<button class="mini-btn grey" onclick="fuAct(this,\'無意願/改期\')">無意願</button>' +
+        '</div>' +
+        '<div class="resched"><input type="date"><button class="mini-btn brown" onclick="fuResched(this)">確認改期</button></div>' +
+        '</div>';
+    }
+
+    function custItem(x, meta, kind) {
+      const grade = x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '';
+      return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(x.name || '（未填姓名）') + grade + '</div>' +
+        '<div class="row-meta">' + (x.phone ? '📱 ' + esc(x.phone) + '<br>' : '') + meta +
+        (x.lastCare ? '<br>💬 上次關懷 ' + esc(x.lastCare) : '') + '</div></div></div>' +
+        '<div class="row-actions">' +
+          (x.phone ? '<button class="mini-btn" data-phone="' + esc(x.phone) + '" data-name="' + esc(x.name) + '" data-kind="' + esc(kind) + '" onclick="careAct(this)">✓ 已關懷</button>' : '') +
+          '<button class="mini-btn brown" data-name="' + esc(x.name) + '" onclick="quickPick(this.dataset.name)">🧾 記一筆消費</button>' +
+        '</div></div>';
+    }
+
+    // 從業績頁直接跳去幫這位顧客記消費
+    function quickPick(name) {
+      switchTab('entry');
+      resetAll();
+      document.getElementById('custName').value = name;
+      onNameInput();
+    }
+
+    // 壽星／沉睡顧客：記錄一筆「已關懷」
+    function careAct(btn) {
+      const box = btn.closest('.row-actions');
+      box.style.opacity = '0.45';
+      box.style.pointerEvents = 'none';
+      api()
+        .withSuccessHandler(function () {
+          box.style.opacity = '1';
+          box.innerHTML = '<div class="done-text">✅ 已記錄關懷</div>';
+          perfStale = true;
+        })
+        .withFailureHandler(function (err) {
+          box.style.opacity = '1';
+          box.style.pointerEvents = '';
+          showToast('記錄失敗：' + err.message);
+        })
+        .logCareFromApp({ phone: btn.dataset.phone, name: btn.dataset.name, kind: btn.dataset.kind, viewAs: viewAs });
+    }
+
+    function fuAct(btn, status) {
+      const el = btn.closest('.fu-item');
+      if (status === '改期') {
+        el.querySelector('.resched').style.display = 'flex';
+        return;
+      }
+      sendFu_(el, { action: 'status', status: status }, status);
+    }
+
+    function fuResched(btn) {
+      const el = btn.closest('.fu-item');
+      const nd = el.querySelector('.resched input').value;
+      if (!nd) { showToast('請先選新的日期'); return; }
+      sendFu_(el, { action: 'reschedule', newDate: nd }, '改期至 ' + nd);
+    }
+
+    function sendFu_(el, extra, doneLabel) {
+      const payload = Object.assign({ row: el.dataset.row, phone: el.dataset.phone, viewAs: viewAs }, extra);
+      el.classList.add('busy');
+      api()
+        .withSuccessHandler(function () {
+          el.classList.remove('busy');
+          el.innerHTML = '<div class="done-text">✅ 已更新：' + esc(doneLabel) + '</div>';
+          perfStale = true;
+        })
+        .withFailureHandler(function (err) {
+          el.classList.remove('busy');
+          showToast('更新失敗：' + err.message);
+        })
+        .updateFollowupStatusFromApp(payload);
+    }
+
+    function jumpTo(id) {
+      document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------- 更改療程 ----------
+    let openDeposits = [];
+    let selectedDeposit = null;
+
+    function toggleChangePanel() {
+      const panel = document.getElementById('changePanel');
+      const open = panel.style.display === 'none';
+      panel.style.display = open ? 'block' : 'none';
+      if (!open) return;
+      document.getElementById('chDate').value = localDateStr();
+      selectedDeposit = null;
+      updateChangeSummary();
+      const box = document.getElementById('depositList');
+      box.innerHTML = '<div class="empty">讀取訂金中...</div>';
+      api()
+        .withSuccessHandler(function (list) {
+          openDeposits = list || [];
+          if (!openDeposits.length) {
+            box.innerHTML = '<div class="empty">這位顧客目前沒有可更改的訂金。收訂金時，款項類型要選「訂金」，才會出現在這裡。</div>';
+            return;
+          }
+          box.innerHTML = openDeposits.map(function (d, i) {
+            return '<div class="candidate" data-i="' + i + '" onclick="pickDeposit(this)"><div class="info">' +
+              '<div class="name">' + esc(d.cat || '未分類') + (d.item ? '・' + esc(d.item) : '') + '</div>' +
+              '<div class="meta">' + esc(d.date) + '　' + esc(d.type || '訂金') + ' <b>' + money(d.amount) + '</b>　' + esc(d.staff) + '</div>' +
+              '</div></div>';
+          }).join('');
+        })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">讀取失敗：' + esc(err.message) + '</div>'; })
+        .getOpenDeposits(selectedCustomer.phone);
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function pickDeposit(el) {
+      document.querySelectorAll('#depositList .candidate').forEach(function (d) { d.classList.remove('selected'); });
+      el.classList.add('selected');
+      selectedDeposit = openDeposits[Number(el.dataset.i)];
+      updateChangeSummary();
+    }
+
+    function updateChangeSummary() {
+      const box = document.getElementById('chSummary');
+      if (!selectedDeposit) { box.innerHTML = '先點選上面要更改的那筆訂金。'; return; }
+      const refund = Number(document.getElementById('chRefund').value) || 0;
+      const inAmt = selectedDeposit.amount - refund;
+      const newCat = document.getElementById('chCat').value || '（新療程）';
+      box.innerHTML = '送出後：<b>' + esc(selectedDeposit.cat || '原療程') + ' <span class="neg">−' + money(selectedDeposit.amount) + '</span></b>' +
+        (inAmt > 0 ? '，<b>' + esc(newCat) + ' +' + money(inAmt) + '</b>' : '') +
+        (refund > 0 ? '，退款 <b class="neg">' + money(refund) + '</b>（從業績扣除）' : '');
+    }
+
+    function submitChange() {
+      if (!selectedDeposit) { showToast('請先選擇要更改的訂金'); return; }
+      const refund = Number(document.getElementById('chRefund').value) || 0;
+      if (refund < 0 || refund > selectedDeposit.amount) { showToast('退款金額不能超過訂金'); return; }
+      const newCat = document.getElementById('chCat').value;
+      if (refund < selectedDeposit.amount && !newCat) { showToast('請選擇新療程大類'); return; }
+
+      const btn = document.getElementById('chBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>處理中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認更改療程</span>';
+          showToast('療程已更改，業績類別已轉換');
+          perfStale = true;
+          document.getElementById('changePanel').style.display = 'none';
+          ['chCat', 'chItem', 'chRefund'].forEach(function (id) { document.getElementById(id).value = ''; });
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>確認更改療程</span>';
+          showToast('更改失敗：' + err.message);
+        })
+        .changeTreatment({
+          phone: selectedCustomer.phone,
+          depositId: selectedDeposit.id,
+          newCat: newCat,
+          newItem: document.getElementById('chItem').value,
+          refund: refund,
+          date: document.getElementById('chDate').value
+        });
+    }
+
+    // ---------- 諮詢追蹤紀錄 ----------
+    function resetConsultForm_() {
+      ['csContent', 'csFeedback', 'csFocus', 'csBudget', 'csGift', 'csReview', 'csNote', 'csBookDate'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('csBooked').value = '否';
+      document.getElementById('csBookDateWrap').style.visibility = 'hidden';
+      document.getElementById('csDate').value = localDateStr();
+    }
+
+    function submitConsult() {
+      if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      const content = document.getElementById('csContent').value.trim();
+      if (!content) { showToast('請填寫追蹤內容'); return; }
+      const booked = document.getElementById('csBooked').value === '是';
+      if (booked && !document.getElementById('csBookDate').value) { showToast('請選擇預約日期'); return; }
+
+      const payload = {
+        phone: selectedCustomer.phone,
+        name: selectedCustomer.name,
+        consultant: document.getElementById('csConsultant').value.trim(),
+        date: document.getElementById('csDate').value,
+        content: content,
+        feedback: document.getElementById('csFeedback').value.trim(),
+        focus: document.getElementById('csFocus').value.trim(),
+        budget: document.getElementById('csBudget').value.trim(),
+        booked: booked,
+        bookDate: document.getElementById('csBookDate').value,
+        gift: document.getElementById('csGift').value.trim(),
+        review: document.getElementById('csReview').value.trim(),
+        note: document.getElementById('csNote').value.trim()
+      };
+      const btn = document.getElementById('csSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存諮詢紀錄</span>';
+          showToast('諮詢紀錄已儲存');
+          resetConsultForm_();
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存諮詢紀錄</span>';
+          showToast('儲存失敗：' + err.message);
+        })
+        .submitConsultLog(payload);
+    }
+
+    // 開啟網頁：有登入紀錄就直接進入，沒有就顯示登入畫面
+    setTimeout(function () {
+      try { document.getElementById('lgEmail').value = localStorage.getItem('crm_last_email') || ''; } catch (e) {}
+      if (authToken) startApp_();
+    }, 0);
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { t.classList.remove('show'); }, msg.length > 30 ? 5500 : 2600);
+    }
+  </script>
+</body>
+</html>
