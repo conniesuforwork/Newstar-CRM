@@ -796,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v26（其他部門細分）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v27（各診所 RFM）</div>
   </div>
 
   <script>
@@ -1632,6 +1632,7 @@
     // ===================== 系統管理（管理員） =====================
     let adminData = null;
     let adminTempNotice = null;
+    let paramBranch = '';          // RFM 參數正在編輯哪家診所（空白＝集團預設）
 
     function loadAdmin() {
       const body = document.getElementById('adminBody');
@@ -1724,14 +1725,31 @@
         '<button type="button" class="primary-btn" id="adCatBtn" style="margin-top:12px; box-shadow:none;" onclick="saveCatalogUI()"><span>儲存療程細項</span></button>' +
         '<div class="hint">按 ✕ 或加入後，記得按「儲存療程細項」才會生效。刪除細項不影響已經輸入過的消費紀錄。</div></div>';
 
-      // 系統參數
+      // 系統參數（先選診所）
+      const bp = d.branchParams || {};
+      const pbOptions = [''].concat(d.branches.concat(Object.keys(bp)).filter(function (x, i, arr) { return x && arr.indexOf(x) === i; }).sort());
+      const isBranch = !!paramBranch;
       html += '<div class="card visible"><div class="section-title">🧮　RFM 與系統參數</div>' +
-        d.params.map(function (p) {
-          return '<label>' + esc(p.label) + '<span style="font-weight:400;">（預設 ' + p.def.toLocaleString('en-US') + '）</span></label>' +
-            '<input type="number" inputmode="numeric" class="ad-param" data-key="' + esc(p.key) + '" value="' + esc(p.value) + '">';
+        '<label style="margin-top:0;">選擇診所</label>' +
+        '<div class="row-2" style="align-items:end;"><select id="pbSel" onchange="paramBranch=this.value; renderAdmin();">' +
+          pbOptions.map(function (b) {
+            return '<option value="' + esc(b) + '"' + (b === paramBranch ? ' selected' : '') + '>' + (b ? esc(b) + (bp[b] ? '（已自訂）' : '') : '集團預設') + '</option>';
+          }).join('') + '</select>' +
+          '<div><input type="text" id="pbNew" placeholder="新診所，例如：新竹診所"></div></div>' +
+        '<button type="button" class="link-btn" onclick="addParamBranch()">＋ 設定新診所</button>' +
+        '<div class="hint">' + (isBranch
+          ? '只影響「所屬診所＝' + esc(paramBranch) + '」的顧客。欄位<b>留空＝沿用集團預設</b>（灰字）。年消費前幾 % 也只跟同診所的顧客比。'
+          : '所有診所的基本門檻。各診所沒有另外設定的項目，都用這裡的數字。') + '</div>' +
+        d.params.filter(function (p) { return !isBranch || p.scope === 'rfm'; }).map(function (p) {
+          const own = isBranch && bp[paramBranch] && bp[paramBranch][p.key] !== undefined ? bp[paramBranch][p.key] : '';
+          return '<label>' + esc(p.label) + '</label>' +
+            '<input type="number" inputmode="numeric" class="ad-param" data-key="' + esc(p.key) + '" value="' + esc(isBranch ? own : p.value) + '"' +
+            (isBranch ? ' placeholder="集團預設 ' + Number(p.value).toLocaleString('en-US') + '"' : '') + '>';
         }).join('') +
-        '<button type="button" class="primary-btn" id="adParamBtn" style="margin-top:16px; box-shadow:none;" onclick="saveParamsUI()"><span>儲存參數並重算等級</span></button>' +
-        '<div class="hint">儲存後會立刻用新門檻重算所有顧客的 R、F、M 與等級。</div></div>';
+        (isBranch ? '' : '<div class="hint">「沉睡天數」和「POS 提醒天數」全集團共用，不分診所。</div>') +
+        '<button type="button" class="primary-btn" id="adParamBtn" style="margin-top:16px; box-shadow:none;" onclick="saveParamsUI()"><span>儲存' +
+          (isBranch ? '「' + esc(paramBranch) + '」' : '集團預設') + '並重算等級</span></button>' +
+        '<div class="hint">儲存後會立刻用新門檻重算顧客的 R、F、M 與等級。</div></div>';
 
       // 操作紀錄
       html += '<div class="card visible"><div class="section-title">📜　操作紀錄（最近 50 筆）</div>' +
@@ -2040,6 +2058,14 @@
         .saveCatalog(adminData.catalog);
     }
 
+    function addParamBranch() {
+      const v = document.getElementById('pbNew').value.trim();
+      if (!v) { showToast('請輸入診所名稱（要和顧客資料裡的所屬診所寫法一樣）'); return; }
+      paramBranch = v;
+      if (adminData.branches.indexOf(v) === -1) adminData.branches.push(v);
+      renderAdmin();
+    }
+
     function saveParamsUI() {
       const values = {};
       document.querySelectorAll('.ad-param').forEach(function (el) { values[el.dataset.key] = el.value; });
@@ -2054,7 +2080,7 @@
           perfStale = true;
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存參數並重算等級</span>'; showToast(err.message); })
-        .saveParams(values);
+        .saveParams(values, paramBranch);
     }
 
     function goManagerView() {
