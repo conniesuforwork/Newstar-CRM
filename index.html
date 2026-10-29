@@ -796,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v25.1（記住我／錯誤提示）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v26（其他部門細分）</div>
   </div>
 
   <script>
@@ -813,7 +813,7 @@
     // ===================== 登入與呼叫伺服器 =====================
     // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
     // 放在 Apps Script 時：保持空白即可
-    const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
+    const CRM_API_URL = 'https://conniesuforwork.github.io/Newstar-CRM/';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
     function serverRun_(fn, args, ok, fail) {
@@ -1690,6 +1690,21 @@
         (off.length ? off.map(personRow).join('') : '<div class="empty">沒有離職人員。</div>') +
         '<div class="hint">設為「離職」後：該員工無法再登入、不再出現在選單和目標表；過去的業績保留不變；她名下的顧客會自動進入主管畫面的「待承接顧客」。</div></div>';
 
+      // 部門設定
+      html += '<div class="card visible"><div class="section-title">🏢　部門設定</div>' +
+        '<div class="group-title first">服務部門（有顧客關懷、業績、目標）</div><div class="jump-links" style="margin-top:4px;">' +
+        '<span class="mini-btn">諮詢部</span><span class="mini-btn">美容部</span></div>' +
+        '<div class="group-title">其他部門（只能建檔、輸入消費）</div><div class="jump-links" style="margin-top:4px;">' +
+        d.otherDepts.map(function (x, i) {
+          return '<span class="mini-btn grey">' + esc(x) + (x === '其他部門' ? '' :
+            ' <b style="cursor:pointer;" data-i="' + i + '" onclick="removeOtherDept(this.dataset.i)">✕</b>') + '</span>';
+        }).join('') + '</div>' +
+        '<div class="row-2" style="margin-top:10px; align-items:end;"><div><label style="margin-top:0;">新增部門</label>' +
+        '<input type="text" id="adDept" placeholder="例如：客服部"></div>' +
+        '<button type="button" class="add-item-btn" style="margin:0;" onclick="addOtherDept()">＋ 加入</button></div>' +
+        '<button type="button" class="primary-btn" id="adDeptBtn" style="margin-top:12px; box-shadow:none;" onclick="saveOtherDeptsUI()"><span>儲存部門設定</span></button>' +
+        '<div class="hint">有人員的部門不能刪除，請先把人員改到別的部門。</div></div>';
+
       // 療程細項
       const byCat = {};
       d.catalog.forEach(function (x, i) { (byCat[x.cat] || (byCat[x.cat] = [])).push(i); });
@@ -1972,6 +1987,29 @@
         .withSuccessHandler(function (r) { showToast('已釋出約 ' + r.freed.toLocaleString('en-US') + ' 格'); loadAdmin(); })
         .withFailureHandler(function (err) { btn.disabled = false; btn.textContent = '🧹 清除多餘空白列'; showToast(err.message); })
         .crmTrimEmptyCells();
+    }
+
+    function addOtherDept() {
+      const v = document.getElementById('adDept').value.trim();
+      if (!v) { showToast('請輸入部門名稱'); return; }
+      if (v === '諮詢部' || v === '美容部' || adminData.otherDepts.indexOf(v) !== -1) { showToast('這個部門已經有了'); return; }
+      adminData.otherDepts.push(v);
+      renderAdmin();
+    }
+
+    function removeOtherDept(i) {
+      adminData.otherDepts.splice(Number(i), 1);
+      renderAdmin();
+    }
+
+    function saveOtherDeptsUI() {
+      const btn = document.getElementById('adDeptBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>儲存中...</span>';
+      api()
+        .withSuccessHandler(function () { showToast('部門設定已儲存'); loadAdmin(); })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存部門設定</span>'; showToast(err.message); loadAdmin(); })
+        .saveOtherDepts(adminData.otherDepts);
     }
 
     function addCatalog() {
