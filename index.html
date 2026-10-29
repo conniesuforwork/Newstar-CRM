@@ -796,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v28（年度等級／去年等級）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v30（Excel 月報表）</div>
   </div>
 
   <script>
@@ -2113,6 +2113,11 @@
           }).join('') + '</select></div></div>' +
         '<div class="hint">點下方任一位人員可看她的明細</div></div>';
 
+      html += reportCardHtml_(d.scope ? '店月報' : '集團月報', '下載' + (d.scope ? '「' + esc(d.scope) + '」店月報' : '集團月報'),
+        d.scope ? { type: 'store', branch: d.scope } : { type: 'group' }, d.monthKey,
+        d.scope ? '內容：全店總覽、每位人員業績、療程類別、重複消費、評論、關懷、全店消費明細。'
+                : '內容：集團總覽、各診所比較、每位人員業績、療程類別、重複消費、評論、關懷、全集團消費明細。');
+
       // 全店
       const growth = d.growthPct === null ? '' : '<br>' + (d.growthPct >= 0
         ? '<span class="up">▲ ' + d.growthPct + '%</span>' : '<span class="down">▼ ' + Math.abs(d.growthPct) + '%</span>') + '　比上月同期';
@@ -2125,11 +2130,11 @@
         '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>新客 ' + s.nc + ' 位') +
-        kpiBox('舊客業績', money(s.os), t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') +
-        kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>服務（不收費）' + s.sv + ' 人次') +
+        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>新客 ' + s.nc + ' 位・成交 ' + s.nd + ' 人次') +
+        kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 人次') +
+        kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
         kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
-        '</div></div>';
+        '</div>' + repeatHtml_(s.rl, s.rc) + '</div>';
 
       // Google 評論：每個人目前進度
       const rvList = d.staff.filter(function (p) { return p.rv > 0 || p.target.review > 0; }).slice().sort(function (a, b) {
@@ -2185,8 +2190,8 @@
             (tg.total ? '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.min(pctOf_(p.s, tg.total), 100) + '%"></div></div>' : '') +
             '<div class="row-meta">總目標 ' + (tg.total ? money(tg.total) + '・' + pctText_(p.s, tg.total) : '未設') + '<br>' +
             '新客 <b>' + money(p.ns) + '</b>（' + pctText_(p.ns, tg.newT) + '・' + p.nc + ' 位）<br>' +
-            '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '）<br>' +
-            '成交 ' + p.c + ' 人次' + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') + '</div></div>';
+            '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '・' + p.oc + ' 位／' + p.od + ' 人次）<br>' +
+            '成交 ' + p.c + ' 人次' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') + '</div></div>';
         }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
 
       html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
@@ -2239,8 +2244,9 @@
       // --- 新客／舊客 ---
       const no = d.newOld;
       html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
-        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位（收到尾款或全額才算結案）') +
-        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '') + '</div>';
+        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次（收到尾款或全額才算結案）') +
+        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 人次') +
+        repeatHtml_(no.repeat) + '</div>';
 
       // --- Google 評論 ---
       html += reviewCardHtml(d.reviews);
@@ -2321,6 +2327,11 @@
       }).join('') : '<div class="empty">本月還沒有成交紀錄。</div>';
       if (d.recent.length >= 15) html += '<div class="empty">只顯示最近 15 筆。</div>';
       html += '</div>';
+
+      // 月報表
+      html += reportCardHtml_('個人月報', '下載' + (d.viewingOther ? '「' + esc(d.name) + '」的' : '我的') + '個人月報',
+        { type: 'personal', person: d.name }, localDateStr().slice(0, 7),
+        '內容：總覽、每一筆消費明細、單月重複消費、Google 評論、術後關懷，可用來核對業績。');
 
       document.getElementById('perfBody').innerHTML = html;
     }
@@ -2479,6 +2490,55 @@
           showToast('儲存失敗：' + err.message);
         })
         .saveTargetsForMonth(document.getElementById('tgMonth').value, rows);
+    }
+
+    // ---------- 月報表（Excel） ----------
+    let reportReq = {};
+    function reportCardHtml_(title, btnText, req, month, desc) {
+      reportReq = req;
+      return '<div class="card visible"><div class="section-title">📥　' + title + '（Excel）</div>' +
+        '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">月份</label>' +
+        '<input type="month" id="rpMonth" value="' + esc(month) + '"></div>' +
+        '<button type="button" class="add-item-btn" id="rpBtn" style="margin:0;" onclick="downloadReport()">' + btnText + '</button></div>' +
+        '<div class="hint">' + desc + '</div></div>';
+    }
+
+    function downloadReport() {
+      const btn = document.getElementById('rpBtn');
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '產生中，請稍候...';
+      const done = function (msg) { btn.disabled = false; btn.textContent = label; if (msg) showToast(msg); };
+      loadSheetJs_(function () {
+        api()
+          .withSuccessHandler(function (r) {
+            try {
+              const wb = XLSX.utils.book_new();
+              r.sheets.forEach(function (sh) {
+                const ws = XLSX.utils.aoa_to_sheet(sh.rows);
+                if (sh.cols) ws['!cols'] = sh.cols.map(function (w) { return { wch: w }; });
+                Object.keys(ws).forEach(function (k) {     // 金額加千分位
+                  if (k.charAt(0) !== '!' && ws[k].t === 'n' && Math.abs(ws[k].v) >= 1000) ws[k].z = '#,##0';
+                });
+                XLSX.utils.book_append_sheet(wb, ws, sh.name.slice(0, 31));
+              });
+              XLSX.writeFile(wb, r.fileName);
+              done('已下載：' + r.fileName);
+            } catch (e) { done('產生 Excel 失敗：' + e.message); }
+          })
+          .withFailureHandler(function (err) { done(err.message); })
+          .getMonthlyReport(Object.assign({ month: document.getElementById('rpMonth').value }, reportReq));
+      });
+    }
+
+    // 單月重複消費：本月成交 2 次以上的顧客
+    function repeatHtml_(list, count) {
+      list = list || [];
+      const n = count !== undefined ? count : list.length;
+      if (!n) return '<div class="hint" style="margin-top:10px;">本月沒有重複消費的顧客。</div>';
+      return '<div class="group-title">🔁 單月重複消費 <span class="count-pill">' + n + ' 位</span></div>' +
+        '<div class="row-meta">' + list.map(function (x) { return esc(x.name) + ' ' + x.n + ' 次'; }).join('、') +
+        (n > list.length ? '…' : '') + '</div>';
     }
 
     function kpiBox(label, value, sub) {
