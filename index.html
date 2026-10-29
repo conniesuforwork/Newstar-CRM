@@ -359,8 +359,11 @@
           <input type="text" id="lgEmail" autocomplete="username" inputmode="email" autocapitalize="off">
           <label>密碼</label>
           <input type="password" id="lgPw" autocomplete="current-password" onkeydown="if (event.key === 'Enter') doLogin()">
-          <button class="primary-btn" id="lgBtn" style="margin-top:18px;" onclick="doLogin()"><span>登入</span></button>
-          <div class="hint">忘記密碼請洽管理員重設。登入 12 小時後會自動登出；共用電腦用完請按最下方「登出」。</div>
+          <label style="display:flex; align-items:center; gap:8px; margin-top:14px; font-weight:400; color:var(--text);">
+            <input type="checkbox" id="lgRemember" style="width:20px; height:20px;"> 記住我（這台裝置 30 天免重新登入）
+          </label>
+          <button class="primary-btn" id="lgBtn" style="margin-top:14px;" onclick="doLogin()"><span>登入</span></button>
+          <div class="hint">共用電腦請不要勾「記住我」，用完按最下方「登出」。沒勾的話 12 小時後自動登出。忘記密碼請洽管理員重設。</div>
         </div>
       </div>
 
@@ -793,7 +796,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v25（可放 GitHub Pages）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v25.1（記住我／錯誤提示）</div>
   </div>
 
   <script>
@@ -810,7 +813,7 @@
     // ===================== 登入與呼叫伺服器 =====================
     // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
     // 放在 Apps Script 時：保持空白即可
-    const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
+    const CRM_API_URL = '';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
     function serverRun_(fn, args, ok, fail) {
@@ -828,13 +831,20 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ fn: fn, args: args })
         })
-          .then(function (resp) { return resp.json(); })
-          .then(function (res) {
+          .then(function (resp) { return resp.text(); })
+          .then(function (text) {
+            let res;
+            try { res = JSON.parse(text); }
+            catch (e) {
+              // 收到的是網頁而不是資料：通常是部署設定問題，重試也沒用
+              fail(new Error('連不上後端（不是網路問題）。請檢查：①部署「誰可以存取」要選「所有人」②加了 doPost 後要重新部署「新版本」③網址要是結尾 /exec 的部署網址'));
+              return;
+            }
             if (res.ok) ok(res.data); else fail(new Error(res.error));
           })
           .catch(function (err) {
             if (tries < 3) setTimeout(go, 800 * tries);
-            else fail(new Error('網路連線不穩，請再試一次'));
+            else fail(new Error('連不上後端：' + (err && err.message || '') + '。若一直出現，請檢查部署「誰可以存取」是否為「所有人」'));
           });
       };
       go();
@@ -878,7 +888,9 @@
       const btn = document.getElementById('lgBtn');
       btn.disabled = true;
       btn.innerHTML = '<span>登入中...</span>';
-      serverRun_('crmLogin', [email, pw],
+      const remember = document.getElementById('lgRemember').checked;
+      try { localStorage.setItem('crm_remember', remember ? '1' : ''); } catch (e) {}
+      serverRun_('crmLogin', [email, pw, remember],
         function (r) {
           btn.disabled = false;
           btn.innerHTML = '<span>登入</span>';
@@ -2643,7 +2655,10 @@
 
     // 開啟網頁：有登入紀錄就直接進入，沒有就顯示登入畫面
     setTimeout(function () {
-      try { document.getElementById('lgEmail').value = localStorage.getItem('crm_last_email') || ''; } catch (e) {}
+      try {
+        document.getElementById('lgEmail').value = localStorage.getItem('crm_last_email') || '';
+        document.getElementById('lgRemember').checked = localStorage.getItem('crm_remember') === '1';
+      } catch (e) {}
       if (authToken) startApp_();
     }, 0);
 
