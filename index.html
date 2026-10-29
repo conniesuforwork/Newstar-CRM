@@ -813,7 +813,7 @@
     // ===================== 登入與呼叫伺服器 =====================
     // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
     // 放在 Apps Script 時：保持空白即可
-    const CRM_API_URL = '';
+    const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
     function serverRun_(fn, args, ok, fail) {
