@@ -473,7 +473,8 @@
             <div class="banner-text"><span id="confirmedText2"></span></div>
           </div>
 
-          <div id="courseBox" class="sub-panel" style="display:none; border-style:solid;"></div>
+          <div id="ownerNote" class="done-bar" style="margin:10px 0 0;"></div>
+        <div id="courseBox" class="sub-panel" style="display:none; border-style:solid;"></div>
 
         <div class="jump-links">
           <button type="button" class="mini-btn grey" onclick="jumpTo('consultCard')">🗒 寫諮詢紀錄</button>
@@ -575,6 +576,18 @@
               </select>
             </div>
           </div>
+
+          <div class="row-2">
+            <div>
+              <label>收費單號 <span style="font-weight:400;">（服務免填）</span></label>
+              <input type="text" id="txReceipt" placeholder="例如 033872" inputmode="numeric" autocomplete="off">
+            </div>
+            <div id="txReasonWrap" style="display:none;">
+              <label>補登原因 <span style="font-weight:400;">（管理員）</span></label>
+              <input type="text" id="txReason" placeholder="超過期限或已關帳才需要">
+            </div>
+          </div>
+          <div class="hint" id="txWindowHint"></div>
 
           <label>
             本次消費診所
@@ -790,7 +803,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v32（診所設定）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v34（櫃台日報匯入／收費單號／關帳）</div>
   </div>
 
   <script>
@@ -1039,6 +1052,15 @@
           document.getElementById('toggleReassignBtn').style.display = u.admin ? 'inline-block' : 'none';
           document.getElementById('ubName').textContent = u.name;
           fillClinicSelects_(u.clinics || []);
+          // 補登期限：一般人員只能選 N 天內；管理員可以選更早，但要填原因
+          const days = u.entryDays || 7;
+          const minD = new Date(); minD.setDate(minD.getDate() - days);
+          if (!u.sysAdmin) document.getElementById('txDate').min = localDateStr(minD);
+          document.getElementById('txDate').max = localDateStr();
+          document.getElementById('txReasonWrap').style.display = u.sysAdmin ? 'block' : 'none';
+          document.getElementById('txWindowHint').textContent = u.sysAdmin
+            ? '管理員補登超過 ' + days + ' 天或已關帳的月份，請填寫補登原因。'
+            : '只能輸入 ' + days + ' 天內的消費；每月 ' + (u.closeDay || 2) + ' 日關上個月的帳。';
           if (u.isOther) document.body.classList.add('role-other');
           if (u.sysAdmin) document.getElementById('tabAdmin').style.display = 'block';
           if (document.getElementById('perfView').style.display !== 'none') loadPerf();
@@ -1241,6 +1263,15 @@
       const defaultStaff = customer.consultant || (perfUser && perfUser.isOther ? '' : myName_());
       document.getElementById('takeoverBtn').style.display = (customer.consultant && customer.consultant === myName_()) ? 'none' : 'inline-flex';
       document.getElementById('takeoverPanel').style.display = 'none';
+      loadCustomerCourses_(customer);
+      const ownerNote = document.getElementById('ownerNote');
+      if (customer.consultant && customer.consultant !== myName_() && customer.consultantStatus !== '離職' && perfUser && !perfUser.isOther) {
+        ownerNote.innerHTML = '這位顧客目前是 <b>' + esc(customer.consultant) + '</b> 的顧客。<br>本次消費可以直接把「負責諮詢師」改成你，業績就算你的，<b>不用等主管核准</b>；想長期經營再按「🙋 申請承接」。';
+        ownerNote.style.display = 'block';
+      } else if (perfUser && !perfUser.isOther && (!customer.consultant || customer.consultantStatus === '離職')) {
+        ownerNote.innerHTML = '這位顧客目前<b>沒有負責人</b>。你送出消費（負責人填你）或按「申請承接」，就會直接歸到你名下。';
+        ownerNote.style.display = 'block';
+      } else ownerNote.style.display = 'none';
       document.getElementById('txConsultant').value = defaultStaff;
       document.getElementById('fuOwner').value = defaultStaff;
       document.getElementById('txNote').value = customer.note || '';
@@ -1350,6 +1381,8 @@
       });
       document.getElementById('txPayType').value = '全額';
       onPayTypeChange();
+      document.getElementById('txReceipt').value = '';
+      document.getElementById('txReason').value = '';
       document.getElementById('courseBox').style.display = 'none';
       [1, 2, 3].forEach(function (n) { document.getElementById('subWrap' + n).style.display = 'none'; document.getElementById('sub' + n).innerHTML = ''; });
       document.getElementById('entryReviewPanel').style.display = 'none';
@@ -1369,6 +1402,7 @@
       const amount = document.getElementById('txAmount').value;
       if (!amount) { showToast('請輸入消費金額'); return; }
       if (!document.getElementById('txConsultant').value.trim() && !(perfUser && perfUser.isOther)) { showToast('請填負責諮詢師，業績才算得到你身上'); return; }
+      if (document.getElementById('txPayType').value !== '服務' && !document.getElementById('txReceipt').value.trim()) { showToast('請填寫收費單號'); return; }
 
       const payload = {
         phone: selectedCustomer.phone,
@@ -1383,6 +1417,8 @@
         item3: document.getElementById('item3').value,
         amount: amount,
         payType: document.getElementById('txPayType').value,
+        receipt: document.getElementById('txReceipt').value.trim(),
+        reason: document.getElementById('txReason').value.trim(),
         sub1: document.getElementById('sub1').value,
         sub2: document.getElementById('sub2').value,
         sub3: document.getElementById('sub3').value,
@@ -1559,13 +1595,15 @@
       btn.disabled = true;
       btn.innerHTML = '<span>送出中...</span>';
       api()
-        .withSuccessHandler(function () {
+        .withSuccessHandler(function (r) {
           btn.disabled = false;
           btn.innerHTML = '<span>送出申請</span>';
           document.getElementById('takeoverPanel').style.display = 'none';
-        loadCustomerCourses_(customer);
           document.getElementById('tkReason').value = '';
-          showToast('已送出承接申請，等主管核准');
+          if (r && r.auto) {
+            showToast('這位顧客原本沒有負責人，已直接歸到你名下');
+            document.getElementById('takeoverBtn').style.display = 'none';
+          } else showToast('已送出承接申請，等主管核准（這段期間消費照樣可以記在你名下）');
         })
         .withFailureHandler(function (err) {
           btn.disabled = false;
@@ -1680,6 +1718,44 @@
         (cap.reclaim > 0 ? '<button type="button" class="add-item-btn" id="trimBtn" onclick="trimCells()">🧹 清除多餘空白列（約可釋出 ' + cap.reclaim.toLocaleString('en-US') + ' 格）</button>' : '') +
         '<div class="hint">系統每天早上 7 點自動檢查，用量超過 70%、85%、95% 時會寄信通知所有管理員。</div></div>';
 
+      // 匯入櫃台日報
+      html += '<div class="card visible"><div class="section-title">📥　匯入櫃台日報（正式業績）</div>' +
+        '<div class="hint" style="margin-top:0;">以「收費單號」為準：同一張單只會有一筆。人員先輸入的會自動對上；金額或負責人不同，以櫃台日報為準並通知人員。' +
+        '管理員修正過的不會被覆蓋。可以重複匯入同一份檔案，不會重複。</div>' +
+        '<div class="row-2"><div><label>這份櫃台日報是哪一家</label><select id="fdBranch">' +
+          d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label>選擇檔案</label><input type="file" id="fdFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFrontDeskFile(this)"></div></div>' +
+        '<div id="fdPreview"></div></div>';
+
+      // 非個人業績名稱
+      html += '<div class="card visible"><div class="section-title">🏷️　非個人業績名稱</div>' +
+        '<div class="hint" style="margin-top:0;">櫃台日報「銷售人員」寫這些名稱的單：算進店和集團業績，但不算任何個人，也不算顧客人數。</div>' +
+        '<div class="jump-links">' + d.nonPerson.map(function (x, i) {
+          return '<span class="mini-btn grey">' + esc(x) + ' <b style="cursor:pointer;" data-i="' + i + '" onclick="adminData.nonPerson.splice(Number(this.dataset.i),1); renderAdmin();">✕</b></span>';
+        }).join('') + '</div>' +
+        '<div class="row-2" style="margin-top:10px; align-items:end;"><div><input type="text" id="npNew" placeholder="例如：KOL合作"></div>' +
+        '<button type="button" class="add-item-btn" style="margin:0;" onclick="var v=document.getElementById(\'npNew\').value.trim(); if(v){adminData.nonPerson.push(v); renderAdmin();}">＋ 加入</button></div>' +
+        '<button type="button" class="primary-btn" id="npBtn" style="margin-top:12px; box-shadow:none;" onclick="saveNonPersonUI()"><span>儲存</span></button></div>';
+
+      // 修正消費紀錄
+      html += '<div class="card visible"><div class="section-title">✏️　修正消費紀錄（管理員）</div>' +
+        '<div class="hint" style="margin-top:0;">櫃台打錯時用這裡修正。修正過的紀錄，之後匯入櫃台日報<b>不會被覆蓋</b>。</div>' +
+        '<div class="row-2" style="align-items:end;"><div><input type="text" id="fxKey" placeholder="收費單號、顧客姓名或手機"></div>' +
+        '<button type="button" class="add-item-btn" style="margin:0;" onclick="findTxUI()">搜尋</button></div><div id="fxList"></div></div>';
+
+      // 匯入舊 CRM
+      const svc = d.people.filter(function (x) { return x.status !== '離職' && (x.dept === '諮詢部' || x.dept === '美容部'); });
+      html += '<div class="card visible"><div class="section-title">📥　匯入諮詢師舊 CRM</div>' +
+        '<div class="hint" style="margin-top:0;">一次匯入一位人員的舊 CRM（Excel）。諮詢紀錄會寫進「諮詢追蹤表」並保留她原本評的等級；' +
+        '顧客主資料沒有的顧客會自動建檔，歸到這位人員。匯入前會先預覽，確認後才寫入。</div>' +
+        '<div class="row-2"><div><label>這份是誰的</label><select id="lgPerson" onchange="var o=this.selectedOptions[0]; if (o && o.dataset.b) document.getElementById(\'lgBranch\').value=o.dataset.b;">' +
+          '<option value="">請選擇</option>' + svc.map(function (x) {
+            return '<option value="' + esc(x.name) + '" data-b="' + esc(x.branch) + '">' + esc(x.name) + '（' + esc(x.dept) + '）</option>';
+          }).join('') + '</select></div>' +
+        '<div><label>顧客屬於哪家診所</label><select id="lgBranch">' + d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div></div>' +
+        '<label>選擇檔案</label><input type="file" id="lgFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readLegacyFile(this)">' +
+        '<div id="lgPreview"></div></div>';
+
       html += '<div class="card visible"><div class="section-title">📥　匯入 POS 未消耗療程</div>' +
         '<div class="hint" style="margin-top:0;">選 POS 匯出的 Excel（含海菲秀、小香局…各分頁），系統會讀取所有分頁。每次匯入會整批取代該診所的舊資料。</div>' +
         d.posStatus.map(function (x) {
@@ -1787,7 +1863,7 @@
         adminTempNotice = null;
         document.getElementById('personForm').innerHTML = '<div class="done-bar" style="display:block;">✅ 已替 <b>' + esc(t.name) + '</b> 產生臨時密碼：' +
           '<div class="temp-pw">' + esc(t.temp) + '</div>登入帳號：' + esc(t.email) +
-          '<br>請把帳號和臨時密碼親自交給她本人，第一次登入會要求改密碼。<b>這組密碼只會顯示這一次</b>，系統不會保存。' +
+          '<br>請把帳號和初始密碼親自交給她本人，第一次登入會要求改密碼，<b>7 天內</b>沒登入改掉就會失效。<b>這組密碼只會顯示這一次</b>，系統不會保存。' +
           '<br><button class="link-btn" onclick="document.getElementById(\'personForm\').innerHTML=\'\'">我已抄下，關閉</button></div>';
         document.getElementById('personForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -1798,7 +1874,7 @@
       api()
         .withSuccessHandler(function (r) { adminTempNotice = r; renderAdmin(); })
         .withFailureHandler(function (err) { showToast(err.message); })
-        .adminResetPassword(name);
+        .adminResetPassword(name, (document.getElementById('pfPw') || {}).value || '');
     }
 
     function showPersonForm(name) {
@@ -1813,10 +1889,15 @@
         (name ? '<div class="hint" style="margin-top:4px;">姓名不能修改（會對不上過去的業績紀錄）。</div>' : '') +
         '<label>Email（公司 Workspace 帳號）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="name@公司網域">' +
         '<label>所屬診所</label><input type="text" id="pfBranch" list="pfBranchList" value="' + esc(p.branch) + '">' +
+        '<label>別名（櫃台日報、財務表上的寫法）</label><input type="text" id="pfAlias" value="' + esc(p.alias || '') + '" placeholder="例如：Yami、YAMI，用頓號分隔">' +
         '<datalist id="pfBranchList">' + d.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
         '<div class="row-2"><div><label>部門</label>' + sel('pfDept', d.depts, p.dept) + '</div>' +
         '<div><label>權限</label>' + sel('pfRole', d.roles, p.role) + '</div></div>' +
         '<label>狀態</label>' + sel('pfStatus', ['在職', '離職'], p.status) +
+        '<label>' + (name ? '重設密碼時使用的初始密碼' : '初始密碼') + '（選填）</label>' +
+        '<input type="text" id="pfPw" placeholder="例如 E19840312；留空＝系統自動產生" autocomplete="off">' +
+        '<div class="hint" style="margin-top:4px;">至少 8 碼、要有英文和數字，<b>大小寫有差別</b>。第一次登入一定要改；' +
+        '7 天內沒登入改密碼就會失效，要再重設。</div>' +
         '<button type="button" class="primary-btn" id="pfBtn" style="margin-top:14px; box-shadow:none;" data-new="' + (name ? '' : '1') + '" onclick="savePersonUI(this)"><span>儲存</span></button>' +
         (name ? '<button type="button" class="add-item-btn" data-name="' + esc(name) + '" onclick="resetPwUI(this.dataset.name)">🔑 重設密碼（產生臨時密碼）</button>' :
           '<div class="hint">儲存後系統會產生一組臨時密碼，請交給她本人；第一次登入會要求改密碼。</div>') +
@@ -1832,7 +1913,9 @@
         branch: document.getElementById('pfBranch').value.trim(),
         dept: document.getElementById('pfDept').value,
         role: document.getElementById('pfRole').value,
-        status: document.getElementById('pfStatus').value
+        status: document.getElementById('pfStatus').value,
+        initPassword: document.getElementById('pfPw').value.trim(),
+        alias: document.getElementById('pfAlias').value.trim()
       };
       if (payload.status === '離職' && !confirm('確定把「' + payload.name + '」設為離職？她將無法登入，名下顧客會進入待承接清單。')) return;
       btn.disabled = true;
@@ -1857,6 +1940,11 @@
       customerCourses = [];
       api().withSuccessHandler(function (res) {
         customerCourses = res.list || [];
+        if (res.noBranch) {
+          box.innerHTML = '<div class="hint" style="margin:0;">你的帳號還沒設定所屬診所，查不到未使用課程，請洽管理員。</div>';
+          box.style.display = 'block';
+          return;
+        }
         if (!customerCourses.length) return;
         const up = Object.keys(res.updated).map(function (b) { return b + ' ' + res.updated[b]; }).join('、');
         const total = customerCourses.reduce(function (a, c) { return a + c.estAmount; }, 0);
@@ -1968,6 +2056,270 @@
         };
         reader.readAsArrayBuffer(file);
       });
+    }
+
+    // ---------- 管理員：匯入櫃台日報 ----------
+    let fdParsed = null;
+
+    function readFrontDeskFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('fdPreview');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const rows = [];
+            const pad = function (n) { return String(n).padStart(2, '0'); };
+            wb.SheetNames.forEach(function (tab) {
+              // 分頁名稱「115年10月」→ 西元年
+              const tm = tab.match(/(\d{2,4})\s*年/);
+              let year = tm ? Number(tm[1]) : new Date().getFullYear();
+              if (year < 1911) year += 1911;
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+                const line = aoa[i].map(function (x) { return String(x).replace(/\s+/g, ''); });
+                if (line.indexOf('收費單號') !== -1 && line.some(function (x) { return x.indexOf('客戶姓名') === 0 || x.indexOf('顧客') === 0; })) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              const h = aoa[hi].map(function (x) { return String(x).replace(/\s+/g, ''); });
+              const sub = (aoa[hi + 1] || []).map(function (x) { return String(x).replace(/\s+/g, ''); });
+              const hasSub = sub.some(function (x) { return /現金|匯款|中信|紅陽|仲信|和潤/.test(x); });
+              const col = function () {
+                for (let a = 0; a < arguments.length; a++) {
+                  const k = arguments[a];
+                  const idx = h.findIndex(function (x) { return x.indexOf(k) === 0; });
+                  if (idx >= 0) return idx;
+                }
+                return -1;
+              };
+              const c = { date: col('消費日期', '日期'), name: col('客戶姓名', '顧客姓名', '顧客'), bday: col('生日'), source: col('客戶來源'),
+                cust: col('新/舊客', '新舊客'), receipt: col('收費單號'), staff: col('銷售人員', '業績人員'), total: col('總計'),
+                pay: col('款項'), channel: col('預約管道') };
+              const labels = [];
+              for (let j = c.receipt + 1; j < c.staff; j++) labels[j] = (hasSub && sub[j]) || h[j] || '';
+              for (let i = hi + (hasSub ? 2 : 1); i < aoa.length; i++) {
+                const r = aoa[i];
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                if (!g('receipt') && !g('name')) continue;
+                // 日期：「10月6日」用分頁的年份；也接受 2026/10/6
+                let dk = '';
+                const ds = g('date');
+                let m = ds.match(/(\d{1,2})\s*月\s*(\d{1,2})/);
+                if (m) dk = year + '-' + pad(m[1]) + '-' + pad(m[2]);
+                else if ((m = ds.match(/(\d{3,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/))) dk = (Number(m[1]) < 1911 ? Number(m[1]) + 1911 : m[1]) + '-' + pad(m[2]) + '-' + pad(m[3]);
+                // 生日：民國 086/01/30 → 1997-01-30
+                let bd = '';
+                const bs = g('bday');
+                if ((m = bs.match(/(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/))) {
+                  let by = Number(m[1]); if (by < 1911) by += 1911;
+                  bd = by + '-' + pad(m[2]) + '-' + pad(m[3]);
+                }
+                const methods = [];
+                for (let j = c.receipt + 1; j < c.staff; j++) {
+                  const v = String(r[j] == null ? '' : r[j]).replace(/[,$\s]/g, '');
+                  if (v && Number(v)) methods.push((labels[j] || '其他') + ' ' + v);
+                }
+                rows.push({ tab: tab, receipt: g('receipt'), date: dk, name: g('name'), birthday: bd, source: g('source'),
+                  custType: g('cust'), amount: g('total'), staffRaw: g('staff'), payRaw: g('pay'), channel: g('channel'), methods: methods.join('、') });
+              }
+            });
+            if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「收費單號」「客戶姓名」欄。</div>'; return; }
+            fdParsed = { rows: rows, fileName: file.name };
+            box.innerHTML = '<div class="empty">已讀到 ' + rows.length + ' 列，正在比對...</div>';
+            api().withSuccessHandler(function (s) { renderFdPreview_(s, false); })
+              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+              .importFrontDesk(fdReq_(true));
+          } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function fdReq_(dryRun) {
+      return { branch: document.getElementById('fdBranch').value, fileName: fdParsed.fileName, rows: fdParsed.rows, dryRun: dryRun };
+    }
+
+    function renderFdPreview_(s, done) {
+      const box = document.getElementById('fdPreview');
+      const list = function (title, arr, red) {
+        if (!arr || !arr.length) return '';
+        return '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
+          '<div class="row-meta">' + arr.slice(0, 50).map(esc).join('<br>') + (arr.length > 50 ? '<br>…' : '') + '</div>';
+      };
+      if (s.blocked) {
+        box.innerHTML = '<div class="sub-panel">' + list('⛔ 這些銷售人員對不到任何人，請先處理再匯入', s.unresolved, true) +
+          '<div class="hint">處理方式：如果是某位人員，到「人員管理」編輯她，在「別名」填上這個寫法；如果不是人（例如員購），加進上方「非個人業績名稱」。處理完重新選一次檔案。</div></div>';
+        return;
+      }
+      box.innerHTML = '<div class="sub-panel">' + (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
+        '<div class="row-meta" style="margin-top:6px;">共 <b>' + s.rows + '</b> 筆：新增 <b>' + s.creates + '</b>、已對上 ' + s.same +
+        '、資料更新 ' + s.refresh + '<br>內部單（員購等）' + s.internal + ' 筆、還沒有手機的顧客 ' + s.noPhone + ' 筆（之後建檔會自動接上）' +
+        (s.closedNew ? '<br>⚠️ 其中 ' + s.closedNew + ' 筆是已關帳月份的新資料' : '') + '</div>' +
+        list('⚠️ 依櫃台日報更正人員輸入（會通知人員）', s.corrections, true) +
+        list('ℹ️ 管理員修正過、這次不覆蓋', s.skippedFix) +
+        list('ℹ️ 檔案裡重複的單號（只取第一筆）', s.dupInFile) +
+        list('ℹ️ 款項名稱不認得', s.unknownPay) +
+        (done ? '' : '<button type="button" class="primary-btn" id="fdBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFrontDesk()"><span>確認匯入</span></button>') + '</div>';
+    }
+
+    function submitFrontDesk() {
+      if (!fdParsed) return;
+      const btn = document.getElementById('fdBtn2');
+      btn.disabled = true;
+      btn.innerHTML = '<span>匯入中，資料多時約需 1～2 分鐘...</span>';
+      api().withSuccessHandler(function (s) { renderFdPreview_(s, true); fdParsed = null; document.getElementById('fdFile').value = ''; perfStale = true; showToast('櫃台日報匯入完成'); })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
+        .importFrontDesk(fdReq_(false));
+    }
+
+    function saveNonPersonUI() {
+      const btn = document.getElementById('npBtn');
+      btn.disabled = true;
+      api().withSuccessHandler(function () { showToast('已儲存'); loadAdmin(); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .saveNonPersonLabels(adminData.nonPerson);
+    }
+
+    // ---------- 管理員：修正消費紀錄 ----------
+    let fxRows = [];
+    function findTxUI() {
+      const box = document.getElementById('fxList');
+      box.innerHTML = '<div class="empty">搜尋中...</div>';
+      api().withSuccessHandler(function (list) {
+        fxRows = list;
+        box.innerHTML = list.length ? list.map(function (t, i) {
+          return '<div class="row-item"><div class="row-top"><div><div class="row-name" style="font-size:15px;">' + esc(t.name) + '　' + money(t.amount) +
+            (t.adminFix ? ' <span class="pay-tag">已修正</span>' : '') + '</div>' +
+            '<div class="row-meta">' + esc(t.date) + '　' + esc(t.branch) + '　單號 ' + esc(t.receipt || '－') + '　' + esc(t.payType) + '　負責：' + esc(t.staff) +
+            '<br>登錄：' + esc(t.enteredBy || '') + '　' + esc(t.recon || '') + '</div></div>' +
+            '<button class="mini-btn brown" data-i="' + i + '" onclick="editTxUI(this.dataset.i)">修正</button></div><div id="fxEdit' + i + '"></div></div>';
+        }).join('') : '<div class="empty">找不到符合的紀錄。</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .adminFindTx(document.getElementById('fxKey').value);
+    }
+
+    function editTxUI(i) {
+      const t = fxRows[Number(i)];
+      document.getElementById('fxEdit' + i).innerHTML = '<div class="sub-panel">' +
+        '<div class="row-2"><div><label style="margin-top:0;">金額</label><input type="number" id="fxAmt" value="' + esc(t.amount) + '"></div>' +
+        '<div><label style="margin-top:0;">款項類型</label><select id="fxType">' + ['全額', '訂金', '次訂金', '尾款', '服務'].map(function (x) {
+          return '<option' + (x === t.payType ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div></div>' +
+        '<label>負責人員</label><input type="text" id="fxStaff" list="staffList" value="' + esc(t.staff) + '">' +
+        '<label style="display:flex; align-items:center; gap:8px; font-weight:400; color:var(--text);"><input type="checkbox" id="fxInternal" style="width:20px; height:20px;"' +
+          (t.internal ? ' checked' : '') + '> 內部單（員購等，不算顧客人數）</label>' +
+        '<label>修正原因（必填）</label><input type="text" id="fxReason" placeholder="例如：櫃台金額打錯，正確為 12,999">' +
+        '<button type="button" class="primary-btn" id="fxBtn" style="margin-top:12px; box-shadow:none;" data-i="' + i + '" onclick="saveTxFixUI(this.dataset.i)"><span>儲存修正</span></button></div>';
+    }
+
+    function saveTxFixUI(i) {
+      const t = fxRows[Number(i)];
+      const btn = document.getElementById('fxBtn');
+      btn.disabled = true;
+      api().withSuccessHandler(function () { showToast('已修正，之後匯入櫃台日報不會覆蓋'); perfStale = true; findTxUI(); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .adminUpdateTx({ row: t.row, id: t.id, receipt: t.receipt, amount: document.getElementById('fxAmt').value,
+          payType: document.getElementById('fxType').value, staff: document.getElementById('fxStaff').value.trim(),
+          internal: document.getElementById('fxInternal').checked, reason: document.getElementById('fxReason').value.trim() });
+    }
+
+    // ---------- 管理員：匯入舊 CRM ----------
+    let legacyParsed = null;
+
+    function readLegacyFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('lgPreview');
+      if (!document.getElementById('lgPerson').value) { showToast('請先選擇這份是誰的'); input.value = ''; return; }
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
+            const rows = [];
+            wb.SheetNames.forEach(function (tab) {
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+                const line = aoa[i].map(function (x) { return String(x).replace(/\s+/g, ''); });
+                if (line.some(function (x) { return x === '客戶姓名' || x === '顧客姓名'; })) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              const h = aoa[hi].map(function (x) { return String(x).replace(/\s+/g, ''); });
+              const col = function () {
+                for (let a = 0; a < arguments.length; a++) {
+                  const k = arguments[a];
+                  const idx = h.findIndex(function (x) { return k.length <= 1 ? x === k : x.indexOf(k) === 0; });
+                  if (idx >= 0) return idx;
+                }
+                return -1;
+              };
+              const c = { name: col('客戶姓名', '顧客姓名'), phone: col('手機號碼', '手機電話', '手機', '電話'), birthday: col('客戶生日', '生日'),
+                grade: col('等級'), R: col('R'), F: col('F'), M: col('M'), date: col('本次追蹤日期', '追蹤日期'),
+                content: col('追蹤內容'), feedback: col('客戶反饋摘要'), booked: col('是否預約回診'), bookDate: col('預約日期'),
+                amount: col('購買金額'), gift: col('贈送內容'), review: col('客戶回饋內容'), note: col('備註'),
+                focus: col('顧客主要關注點'), budget: col('顧客預算區間') };
+              for (let i = hi + 1; i < aoa.length; i++) {
+                const r = aoa[i];
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                if (!g('name')) continue;
+                const o = {};
+                Object.keys(c).forEach(function (k) { o[k] = g(k); });
+                rows.push(o);
+              }
+            });
+            if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「客戶姓名」欄。</div>'; return; }
+            legacyParsed = { rows: rows, fileName: file.name };
+            box.innerHTML = '<div class="empty">已讀到 ' + rows.length + ' 列，正在比對顧客資料...</div>';
+            api()
+              .withSuccessHandler(function (s) { renderLegacyPreview_(s, false); })
+              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+              .importLegacyCrm(legacyReq_(true));
+          } catch (err) {
+            box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>';
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function legacyReq_(dryRun) {
+      return { consultant: document.getElementById('lgPerson').value, branch: document.getElementById('lgBranch').value,
+        fileName: legacyParsed.fileName, rows: legacyParsed.rows, dryRun: dryRun };
+    }
+
+    function renderLegacyPreview_(s, done) {
+      const list = function (title, arr, red) {
+        if (!arr.length) return '';
+        return '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
+          '<div class="row-meta">' + arr.slice(0, 60).map(esc).join('、') + (arr.length > 60 ? '…' : '') + '</div>';
+      };
+      document.getElementById('lgPreview').innerHTML = '<div class="sub-panel">' +
+        (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
+        '<div class="row-meta" style="margin-top:6px;">諮詢紀錄 <b>' + s.rows + '</b> 列、顧客約 <b>' + s.customers + '</b> 位<br>' +
+        '手機來源：檔案裡有 ' + s.phone.fromFile + '、從顧客主資料找到 ' + s.phone.fromMaster + '、從 POS 找到 ' + s.phone.fromPos + '<br>' +
+        '新建顧客 <b>' + s.toCreate + '</b> 位、原本沒有負責人→歸給她 <b>' + s.toAssign + '</b> 位、本來就是她的 ' + s.already + ' 位</div>' +
+        list('⚠️ 屬於其他在職人員（不會改歸屬，需要的話請走申請承接）', s.conflicts, true) +
+        list('⚠️ 找不到手機（諮詢紀錄仍會匯入；顧客下次來時建檔補手機即可）', s.noPhone, true) +
+        list('⚠️ 同名同姓、無法確定是哪一位（請之後手動補手機）', s.ambiguous, true) +
+        (done ? '' : '<button type="button" class="primary-btn" id="lgBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitLegacy()"><span>確認匯入</span></button>') +
+        '</div>';
+    }
+
+    function submitLegacy() {
+      if (!legacyParsed) return;
+      if (!confirm('確定把這份舊 CRM 匯入給「' + document.getElementById('lgPerson').value + '」？同一份檔案不要重複匯入，否則諮詢紀錄會重複。')) return;
+      const btn = document.getElementById('lgBtn2');
+      btn.disabled = true;
+      btn.innerHTML = '<span>匯入中，資料多時約需 1 分鐘...</span>';
+      api()
+        .withSuccessHandler(function (s) { renderLegacyPreview_(s, true); legacyParsed = null; document.getElementById('lgFile').value = ''; showToast('舊 CRM 匯入完成'); perfStale = true; })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
+        .importLegacyCrm(legacyReq_(false));
     }
 
     function submitPos() {
@@ -2189,7 +2541,8 @@
           '<div class="hint">' + esc(d.scopeLabel) + '目標 <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
           (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + ' 天' : '') : '') + '</div>'
           : '<div class="hint">尚未設定本月目標</div>') +
-        '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth + '</div></div>';
+        '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth +
+        (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
         kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>新客 ' + s.nc + ' 位・成交 ' + s.nd + ' 人次') +
@@ -2382,13 +2735,24 @@
       html += '<div class="card visible"><div class="section-title">🧾　本月成交明細</div>';
       html += d.recent.length ? d.recent.map(function (r) {
         const pt = (r.custType === '新客' ? '<span class="new-tag">新客</span>' : '') +
-          (r.payType && r.payType !== '全額' ? '<span class="pay-tag">' + esc(r.payType) + '</span>' : '');
+          (r.payType && r.payType !== '全額' ? '<span class="pay-tag">' + esc(r.payType) + '</span>' : '') +
+          reconTag_(r.recon);
         return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(r.customer || '（未填姓名）') + pt + '</div>' +
           '<div class="row-meta">' + esc(r.date) + (r.items ? '　' + esc(r.items) : '') + '</div></div>' +
           '<div class="amount' + (r.amount < 0 ? ' neg' : '') + '">' + money(r.amount) + '</div></div></div>';
       }).join('') : '<div class="empty">本月還沒有成交紀錄。</div>';
       if (d.recent.length >= 15) html += '<div class="empty">只顯示最近 15 筆。</div>';
       html += '</div>';
+
+      // 依櫃台日報更正的通知
+      if (d.corrected && d.corrected.length) {
+        html += '<div class="card visible"><div class="section-title">⚠️　本月有 ' + d.corrected.length + ' 筆依櫃台日報更正</div>' +
+          '<div class="hint" style="margin-top:0;">你輸入的金額或負責人跟櫃台日報不同，系統已改成櫃台日報的內容。如果是櫃台打錯，請告訴管理員修正。</div>' +
+          d.corrected.map(function (x) {
+            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.customer) + '　單號 ' + esc(x.receipt) + '</span>' +
+              '<span class="amount">' + money(x.amount) + '</span></div><div class="row-meta">' + esc(x.date) + '　' + esc(x.recon) + '　現在負責：' + esc(x.staff) + '</div></div>';
+          }).join('') + '</div>';
+      }
 
       // 月報表
       html += reportCardHtml_('個人月報', '下載' + (d.viewingOther ? '「' + esc(d.name) + '」的' : '我的') + '個人月報',
@@ -2609,6 +2973,15 @@
       return '<div class="group-title">🔁 單月重複消費 <span class="count-pill">' + n + ' 位</span></div>' +
         '<div class="row-meta">' + list.map(function (x) { return esc(x.name) + ' ' + x.n + ' 次'; }).join('、') +
         (n > list.length ? '…' : '') + '</div>';
+    }
+
+    function reconTag_(recon) {
+      if (!recon) return '';
+      if (/^已依櫃台日報更正/.test(recon)) return '<span class="new-tag">已更正</span>';
+      if (/對上|櫃台日報/.test(recon)) return '<span class="dept-tag">✓ 櫃台日報</span>';
+      if (/管理員/.test(recon)) return '<span class="pay-tag">管理員修正</span>';
+      if (/等待/.test(recon)) return '<span class="pay-tag" style="background:#EFEAE4; color:#948577;">待對帳</span>';
+      return '';
     }
 
     function kpiBox(label, value, sub) {
