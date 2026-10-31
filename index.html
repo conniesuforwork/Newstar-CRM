@@ -803,7 +803,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v34（櫃台日報匯入／收費單號／關帳）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v35（財務拆帳／品項／付款方式／貢獻度）</div>
   </div>
 
   <script>
@@ -1727,6 +1727,20 @@
         '<div><label>選擇檔案</label><input type="file" id="fdFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFrontDeskFile(this)"></div></div>' +
         '<div id="fdPreview"></div></div>';
 
+      // 匯入財務拆帳表
+      html += '<div class="card visible"><div class="section-title">📥　匯入財務拆帳表（品項與業績拆分）</div>' +
+        '<div class="hint" style="margin-top:0;">各店分開匯入。用「同一天＋同一位顧客」對到櫃台日報的單，依每個品項的諮詢師拆分業績。' +
+        '檔案日期範圍內的舊資料會整批取代，可以重複匯入。</div>' +
+        '<div class="row-2"><div><label>這份是哪一家</label><select id="fiBranch">' +
+          d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label>選擇檔案</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)"></div></div>' +
+        '<div id="fiPreview"></div></div>';
+
+      // 拆帳待處理
+      html += '<div class="card visible"><div class="section-title">🧩　拆帳待處理</div>' +
+        '<div class="hint" style="margin-top:0;">金額不同的單、對不上的品項、拆給多人時的成交歸屬。</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadSplitIssues()">載入待處理項目</button><div id="spBox"></div></div>';
+
       // 非個人業績名稱
       html += '<div class="card visible"><div class="section-title">🏷️　非個人業績名稱</div>' +
         '<div class="hint" style="margin-top:0;">櫃台日報「銷售人員」寫這些名稱的單：算進店和集團業績，但不算任何個人，也不算顧客人數。</div>' +
@@ -2099,8 +2113,14 @@
               const c = { date: col('消費日期', '日期'), name: col('客戶姓名', '顧客姓名', '顧客'), bday: col('生日'), source: col('客戶來源'),
                 cust: col('新/舊客', '新舊客'), receipt: col('收費單號'), staff: col('銷售人員', '業績人員'), total: col('總計'),
                 pay: col('款項'), channel: col('預約管道') };
+              // 付款欄位名稱：第二列（中信）加上第一列合併儲存格的上層（刷卡）→「刷卡-中信」
               const labels = [];
-              for (let j = c.receipt + 1; j < c.staff; j++) labels[j] = (hasSub && sub[j]) || h[j] || '';
+              let parent = '';
+              for (let j = c.receipt + 1; j < c.staff; j++) {
+                if (h[j]) parent = h[j];
+                const s = hasSub ? sub[j] : '';
+                labels[j] = s ? ((parent && parent !== '金額' && parent !== s) ? parent + '-' + s : s) : (h[j] || '');
+              }
               for (let i = hi + (hasSub ? 2 : 1); i < aoa.length; i++) {
                 const r = aoa[i];
                 const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
@@ -2118,13 +2138,13 @@
                   let by = Number(m[1]); if (by < 1911) by += 1911;
                   bd = by + '-' + pad(m[2]) + '-' + pad(m[3]);
                 }
-                const methods = [];
+                const pay = {};
                 for (let j = c.receipt + 1; j < c.staff; j++) {
                   const v = String(r[j] == null ? '' : r[j]).replace(/[,$\s]/g, '');
-                  if (v && Number(v)) methods.push((labels[j] || '其他') + ' ' + v);
+                  if (v && Number(v)) pay[labels[j] || '其他'] = (pay[labels[j] || '其他'] || 0) + Number(v);
                 }
                 rows.push({ tab: tab, receipt: g('receipt'), date: dk, name: g('name'), birthday: bd, source: g('source'),
-                  custType: g('cust'), amount: g('total'), staffRaw: g('staff'), payRaw: g('pay'), channel: g('channel'), methods: methods.join('、') });
+                  custType: g('cust'), amount: g('total'), staffRaw: g('staff'), payRaw: g('pay'), channel: g('channel'), pay: pay });
               }
             });
             if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「收費單號」「客戶姓名」欄。</div>'; return; }
@@ -2182,6 +2202,153 @@
       api().withSuccessHandler(function () { showToast('已儲存'); loadAdmin(); })
         .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
         .saveNonPersonLabels(adminData.nonPerson);
+    }
+
+    // ---------- 管理員：匯入財務拆帳表 ----------
+    let fiParsed = null;
+
+    function readFinanceFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('fiPreview');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const rows = [];
+            const pad = function (n) { return String(n).padStart(2, '0'); };
+            const norm = function (x) { return String(x).replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')'); };
+            wb.SheetNames.forEach(function (tab) {
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+                const line = aoa[i].map(norm);
+                if (line.some(function (x) { return x.indexOf('付款日期') === 0; }) && line.some(function (x) { return x.indexOf('收款金額') === 0; })) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              const h = aoa[hi].map(norm);
+              const col = function () {
+                for (let a = 0; a < arguments.length; a++) {
+                  const k = arguments[a];
+                  const idx = h.findIndex(function (x) { return x.indexOf(k) === 0; });
+                  if (idx >= 0) return idx;
+                }
+                return -1;
+              };
+              const c = { date: col('付款日期'), name: col('顧客'), staff: col('諮詢師', '銷售人員'), big: col('項目(大)'), mid: col('項目(中)'),
+                small: col('項目(小)'), amount: col('收款金額'), pay: col('付款'), note: col('備註') };
+              for (let i = hi + 1; i < aoa.length; i++) {
+                const r = aoa[i];
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                const m = g('date').match(/(\d{3,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+                if (!m || !g('name')) continue;
+                const yy = Number(m[1]) < 1911 ? Number(m[1]) + 1911 : Number(m[1]);
+                rows.push({ date: yy + '-' + pad(m[2]) + '-' + pad(m[3]), name: g('name'), staffRaw: g('staff'), big: g('big'), mid: g('mid'),
+                  small: g('small'), amount: g('amount').replace(/[^\d.\-]/g, ''), pay: g('pay'), note: g('note') });
+              }
+            });
+            if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「付款日期」「顧客」「收款金額」欄。</div>'; return; }
+            fiParsed = { rows: rows, fileName: file.name };
+            box.innerHTML = '<div class="empty">已讀到 ' + rows.length + ' 列，正在配對...</div>';
+            api().withSuccessHandler(function (s) { renderFiPreview_(s, false); })
+              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+              .importFinance(fiReq_(true));
+          } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function fiReq_(dryRun) {
+      return { branch: document.getElementById('fiBranch').value, fileName: fiParsed.fileName, rows: fiParsed.rows, dryRun: dryRun };
+    }
+
+    function renderFiPreview_(s, done) {
+      const box = document.getElementById('fiPreview');
+      const list = function (title, arr, red) {
+        if (!arr || !arr.length) return '';
+        return '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
+          '<div class="row-meta">' + arr.slice(0, 40).map(esc).join('<br>') + (arr.length > 40 ? '<br>…' : '') + '</div>';
+      };
+      if (s.blocked) {
+        box.innerHTML = '<div class="sub-panel">' + list('⛔ 這些諮詢師對不到任何人，請先到「人員管理」補別名', s.unresolved, true) + '</div>';
+        return;
+      }
+      box.innerHTML = '<div class="sub-panel">' + (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
+        '<div class="row-meta" style="margin-top:6px;">' + esc(s.range) + '　共 <b>' + s.lines + '</b> 列' +
+        (s.replaced ? '（會取代這段期間原本的 ' + s.replaced + ' 列）' : '') +
+        '<br>自動拆帳 <b>' + s.ok + '</b> 張單' + (s.manual ? '、沿用手動配對 ' + s.manual + ' 組' : '') + '</div>' +
+        list('🟡 金額不同（先不拆，請到「拆帳待處理」確認）', s.mismatch, true) +
+        list('❓ 對不上（請到「拆帳待處理」手動配對）', s.unmatched, true) +
+        (done ? '' : '<button type="button" class="primary-btn" id="fiBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFinance()"><span>確認匯入</span></button>') + '</div>';
+    }
+
+    function submitFinance() {
+      if (!fiParsed) return;
+      const btn = document.getElementById('fiBtn2');
+      btn.disabled = true;
+      btn.innerHTML = '<span>匯入中...</span>';
+      api().withSuccessHandler(function (s) { renderFiPreview_(s, true); fiParsed = null; document.getElementById('fiFile').value = ''; perfStale = true; showToast('財務拆帳表匯入完成'); })
+        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
+        .importFinance(fiReq_(false));
+    }
+
+    // ---------- 管理員：拆帳待處理 ----------
+    let spData = null;
+
+    function loadSplitIssues() {
+      const box = document.getElementById('spBox');
+      box.innerHTML = '<div class="empty">載入中...</div>';
+      api().withSuccessHandler(function (d) { spData = d; renderSplitIssues_(); })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getSplitIssues();
+    }
+
+    function renderSplitIssues_() {
+      const d = spData;
+      let h = '';
+      h += '<div class="group-title">🟡 金額不同 <span class="count-pill' + (d.mismatch.length ? ' red' : '') + '">' + d.mismatch.length + '</span></div>';
+      h += d.mismatch.length ? d.mismatch.map(function (x, i) {
+        return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　單號 ' + esc(x.receipt) + '</div>' +
+          '<div class="row-meta">櫃台 ' + money(x.desk) + '（' + esc(x.deskStaff) + '）／財務 ' + money(x.fin) + '<br>' + x.lines.map(esc).join('、') + '</div>' +
+          '<div class="jump-links"><button class="mini-btn" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'照財務\'})">照財務拆</button>' +
+          '<button class="mini-btn grey" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'不拆\'})">不拆（維持櫃台）</button></div></div>';
+      }).join('') : '<div class="empty">沒有。</div>';
+
+      h += '<div class="group-title">❓ 對不上 <span class="count-pill' + (d.unmatched.length ? ' red' : '') + '">' + d.unmatched.length + '</span></div>';
+      h += d.unmatched.length ? d.unmatched.map(function (x, i) {
+        return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　' + money(x.total) + '</div>' +
+          '<div class="row-meta">' + x.lines.map(esc).join('、') + '</div>' +
+          (x.options.length ? '<select id="spPick' + i + '"><option value="">選擇當天的收費單</option>' + x.options.map(function (o) {
+            return '<option value="' + esc(o.receipt) + '">' + esc(o.text) + '</option>'; }).join('') + '</select>' : '<div class="hint">當天這家店沒有任何收費單，可能櫃台日報還沒匯入。</div>') +
+          '<div class="jump-links">' + (x.options.length ? '<button class="mini-btn" data-i="' + i + '" onclick="spPair(this.dataset.i)">配對</button>' : '') +
+          '<button class="mini-btn grey" data-i="' + i + '" onclick="spAct({type:\'skip\', keys: spData.unmatched[this.dataset.i].keys})">略過</button></div></div>';
+      }).join('') : '<div class="empty">沒有。</div>';
+
+      h += '<div class="group-title">👥 拆給多人：成交人次給誰 <span class="count-pill' + (d.owners.length ? ' red' : '') + '">' + d.owners.length + '</span></div>';
+      h += d.owners.length ? d.owners.map(function (x, i) {
+        return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　單號 ' + esc(x.receipt) + '</div>' +
+          '<div class="row-meta">目前預設給金額最多的人（' + esc(x.people[0].name) + '）</div><div class="jump-links">' +
+          x.people.map(function (p) {
+            return '<button class="mini-btn" data-i="' + i + '" data-n="' + esc(p.name) + '" onclick="spAct({type:\'owner\', receipt: spData.owners[this.dataset.i].receipt, staff: this.dataset.n})">' +
+              esc(p.name) + ' ' + money(p.amount) + '</button>';
+          }).join('') + '</div></div>';
+      }).join('') : '<div class="empty">沒有。</div>';
+      document.getElementById('spBox').innerHTML = h;
+    }
+
+    function spPair(i) {
+      const v = document.getElementById('spPick' + i).value;
+      if (!v) { showToast('請先選擇收費單'); return; }
+      spAct({ type: 'pair', keys: spData.unmatched[Number(i)].keys, receipt: v });
+    }
+
+    function spAct(a) {
+      api().withSuccessHandler(function () { showToast('已處理'); perfStale = true; loadSplitIssues(); })
+        .withFailureHandler(function (err) { showToast(err.message); })
+        .resolveSplitIssue(a);
     }
 
     // ---------- 管理員：修正消費紀錄 ----------
@@ -2549,7 +2716,13 @@
         kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 人次') +
         kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
         kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
-        '</div>' + repeatHtml_(s.rl, s.rc) + '</div>';
+        '</div>' + repeatHtml_(s.rl, s.rc) +
+        (d.splitStat && d.splitStat.total ? '<div class="hint">財務拆帳完成度：<b>' + d.splitStat.done + ' / ' + d.splitStat.total + '</b> 張單（' +
+          Math.round(d.splitStat.done / d.splitStat.total * 100) + '%）' + (d.splitStat.done < d.splitStat.total ? '，未拆帳的單業績暫依櫃台日報計算' : '，本月業績分配已定案') + '</div>' : '') +
+        '</div>';
+
+      // 付款結構
+      html += payCardHtml_('💳　付款結構', d.pay, null);
 
       // Google 評論：每個人目前進度
       const rvList = d.staff.filter(function (p) { return p.rv > 0 || p.target.review > 0; }).slice().sort(function (a, b) {
@@ -2568,6 +2741,9 @@
             (tr ? '<div class="progress" style="height:8px; margin:6px 0 0;"><div style="width:' + Math.min(pc, 100) + '%"></div></div>'
                 : '<div class="row-meta">未設評論目標</div>') + '</div>';
         }).join('') : '<div class="empty">這個月還沒有人登記評論，也還沒設定評論目標。</div>') + '</div>';
+
+      // 品項銷售（財務拆帳表）
+      html += productCardHtml_(d.products);
 
       // 療程類別業績與佔比
       if (d.categories.length) {
@@ -2589,7 +2765,9 @@
         html += '<div class="card visible"><div class="section-title">🏥　各診所</div>' + d.branches.map(function (b) {
           return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(b.name) + '</span><span class="amount">' + money(b.s) + '</span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.max(b.s, 0) / bmax * 100 + '%"></div></div>' +
-            '<div class="row-meta">新客 ' + money(b.ns) + '（' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次</div></div>';
+            '<div class="row-meta">新客 ' + money(b.ns) + '（' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次<br>' +
+            '現金 ' + money(b.cash) + '（佔 ' + pctOf_(b.cashRatio) + '）' +
+            (b.splitStat && b.splitStat.total ? '　財務拆帳 ' + b.splitStat.done + '/' + b.splitStat.total : '') + '</div></div>';
         }).join('') + '</div>';
       }
 
@@ -2606,7 +2784,10 @@
             '<div class="row-meta">總目標 ' + (tg.total ? money(tg.total) + '・' + pctText_(p.s, tg.total) : '未設') + '<br>' +
             '新客 <b>' + money(p.ns) + '</b>（' + pctText_(p.ns, tg.newT) + '・' + p.nc + ' 位）<br>' +
             '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '・' + p.oc + ' 位／' + p.od + ' 人次）<br>' +
-            '成交 ' + p.c + ' 人次' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') + '</div></div>';
+            '成交 ' + p.c + ' 人次' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') +
+            '<br>💳 現金 ' + money(p.cash || 0) + '（個人現金佔比 ' + pctOf_(p.cashRatio) + '）' +
+            (p.mainBranch ? '<br>🏆 佔' + esc(p.mainBranch) + '：業績 <b>' + pctOf_(p.shareStore) + '</b>、現金 <b>' + pctOf_(p.cashShareStore) + '</b>' : '') +
+            (p.shareGroup !== undefined ? '　佔集團：業績 ' + pctOf_(p.shareGroup) + '、現金 ' + pctOf_(p.cashShareGroup) : '') + '</div></div>';
         }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
 
       html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
@@ -2743,6 +2924,34 @@
       }).join('') : '<div class="empty">本月還沒有成交紀錄。</div>';
       if (d.recent.length >= 15) html += '<div class="empty">只顯示最近 15 筆。</div>';
       html += '</div>';
+
+      // 收款方式
+      html += payCardHtml_('💳　我的收款方式', d.pay, d.contribution);
+
+      // 店內貢獻度（全店一起排，含每個人）
+      if (d.contribution && d.contribution.list.length) {
+        const cb = d.contribution;
+        html += '<div class="card visible"><div class="section-title">🏆　' + esc(cb.branch) + ' 店內貢獻度</div>' +
+          '<div class="hint" style="margin-top:0;">業績佔全店、現金佔全店（全店含員購等非個人業績）</div>' +
+          cb.list.map(function (x, i) {
+            return '<div class="row-item"' + (x.me ? ' style="background:var(--primary-light); border-radius:10px; padding:8px;"' : '') + '>' +
+              '<div class="row-top"><span class="row-name" style="font-size:15px;">' + (i + 1) + '. ' + esc(x.name) + (x.me ? '（我）' : '') +
+              ' <span class="dept-tag">' + esc(x.dept) + '</span></span><span class="amount">' + pctOf_(x.share) + '</span></div>' +
+              '<div class="progress" style="height:6px; margin:4px 0;"><div style="width:' + Math.min(x.share * 100, 100) + '%"></div></div>' +
+              '<div class="row-meta">現金佔全店 ' + pctOf_(x.cashShare) + '</div></div>';
+          }).join('') +
+          (cb.otherShare ? '<div class="hint">非個人業績（員購、行銷配合等）佔 ' + pctOf_(cb.otherShare) + '</div>' : '') + '</div>';
+      }
+
+      // 財務拆帳調整通知
+      if (d.splitNotice && d.splitNotice.length) {
+        html += '<div class="card visible"><div class="section-title">🧾　本月有 ' + d.splitNotice.length + ' 張單依財務拆帳調整</div>' +
+          '<div class="hint" style="margin-top:0;">財務拆帳表匯入後，業績依每個品項的諮詢師重新分配。</div>' +
+          d.splitNotice.map(function (x) {
+            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.customer) + '　單號 ' + esc(x.receipt) + '</span>' +
+              '<span class="amount">' + money(x.before) + ' → ' + money(x.after) + '</span></div><div class="row-meta">' + esc(x.date) + '　拆給：' + esc(x.people) + '</div></div>';
+          }).join('') + '</div>';
+      }
 
       // 依櫃台日報更正的通知
       if (d.corrected && d.corrected.length) {
@@ -2973,6 +3182,42 @@
       return '<div class="group-title">🔁 單月重複消費 <span class="count-pill">' + n + ' 位</span></div>' +
         '<div class="row-meta">' + list.map(function (x) { return esc(x.name) + ' ' + x.n + ' 次'; }).join('、') +
         (n > list.length ? '…' : '') + '</div>';
+    }
+
+    function pctOf_(v) { return (v === undefined || v === null) ? '－' : Math.round(v * 1000) / 10 + '%'; }
+
+    // 付款結構卡片：大類金額與佔比、現金佔比；個人畫面再加全店平均
+    function payCardHtml_(title, p, cb) {
+      if (!p) return '';
+      const cats = Object.keys(p.byCat || {}).sort(function (a, b) { return p.byCat[b] - p.byCat[a]; });
+      let h = '<div class="card visible"><div class="section-title">' + title + '</div>';
+      if (!p.paid && !p.pending) return h + '<div class="empty">本月還沒有收款資料。</div></div>';
+      h += '<div class="kpi-grid" style="margin-bottom:8px;">' + kpiBox('現金佔比', pctOf_(p.cashRatio), '現金 ' + money(p.cash) + '<br>實收 ' + money(p.paid)) +
+        (cb ? kpiBox(esc(cb.branch) + ' 平均', pctOf_(cb.cashRatio), '全店現金佔比') : '') + '</div>';
+      h += cats.map(function (k) {
+        const r = p.paid ? p.byCat[k] / p.paid : 0;
+        return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(k) + '</span><span class="amount">' + money(p.byCat[k]) + '</span></div>' +
+          '<div class="progress" style="height:6px; margin:4px 0;"><div style="width:' + r * 100 + '%"></div></div>' +
+          '<div class="row-meta">佔 ' + pctOf_(r) + '</div></div>';
+      }).join('');
+      if (p.pending) h += '<div class="hint">另有 ' + money(p.pending) + ' 尚未有付款資料（等櫃台日報匯入），不列入佔比。</div>';
+      return h + '</div>';
+    }
+
+    // 品項銷售卡片：大類 → 中類 → 小類
+    function productCardHtml_(list) {
+      if (!list || !list.length) return '<div class="card visible"><div class="section-title">🧾　品項銷售</div>' +
+        '<div class="empty">本月還沒有匯入財務拆帳表。</div></div>';
+      return '<div class="card visible"><div class="section-title">🧾　品項銷售（財務拆帳表）</div>' + list.map(function (b) {
+        return '<details style="margin:6px 0;"><summary class="row-top" style="cursor:pointer;"><span class="row-name" style="font-size:15px;">' + esc(b.name) +
+          ' <span class="count-pill">' + b.n + ' 件</span></span><span class="amount">' + money(b.s) + '</span></summary>' +
+          '<div class="row-meta">新客 ' + money(b.ns) + '　舊客 ' + money(b.os) + '</div>' +
+          b.mids.map(function (m) {
+            return '<div class="sub-row" style="display:block;"><b>' + esc(m.name) + '</b>　' + money(m.s) + '（' + m.n + ' 件）<br>' +
+              m.smalls.slice(0, 8).map(function (s) { return esc(s.name) + ' ' + money(s.s) + '（' + s.n + '）'; }).join('、') +
+              (m.smalls.length > 8 ? '…' : '') + '</div>';
+          }).join('') + '</details>';
+      }).join('') + '<div class="hint">新舊客依系統規則判斷；還沒對上櫃台日報的品項不分新舊客。完整明細請下載月報。</div></div>';
     }
 
     function reconTag_(recon) {
