@@ -286,6 +286,9 @@
     .must-change #adminView { display: none !important; }
     .must-change #pwView { display: block; }
     .temp-pw { font-size: 26px; font-weight: 800; letter-spacing: 3px; margin: 6px 0; color: var(--text); font-family: monospace; }
+    .tab-badge { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; margin-left: 4px;
+      border-radius: 999px; background: #D0573F; color: #fff; font-size: 11.5px; font-weight: 700; vertical-align: 2px; }
+    .chg-before { color: var(--text-muted); text-decoration: line-through; }
     .new-tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--danger-light); color: #9B5F4D; margin-left: 4px; }
 
     .group-title { font-size: 15.5px; font-weight: 800; margin: 18px 0 2px; display: flex; align-items: center; gap: 6px; }
@@ -340,7 +343,7 @@
       </div>
       <div class="tabs">
         <button class="tab-btn active" id="tabEntry" onclick="switchTab('entry')">📝 建檔／消費</button>
-        <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 我的業績</button>
+        <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 我的業績<span id="perfBadge" class="tab-badge" style="display:none;"></span></button>
         <button class="tab-btn" id="tabAdmin" style="display:none;" onclick="switchTab('admin')">⚙️ 系統管理</button>
       </div>
       <div class="steps" id="stepsBar">
@@ -803,7 +806,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v35（財務拆帳／品項／付款方式／貢獻度）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v36（業績異動提醒／疑似重複）</div>
   </div>
 
   <script>
@@ -1052,6 +1055,7 @@
           document.getElementById('toggleReassignBtn').style.display = u.admin ? 'inline-block' : 'none';
           document.getElementById('ubName').textContent = u.name;
           fillClinicSelects_(u.clinics || []);
+          setPerfBadge_(u.unreadChanges || 0);
           // 補登期限：一般人員只能選 N 天內；管理員可以選更早，但要填原因
           const days = u.entryDays || 7;
           const minD = new Date(); minD.setDate(minD.getDate() - days);
@@ -1757,6 +1761,12 @@
         '<div class="row-2" style="align-items:end;"><div><input type="text" id="fxKey" placeholder="收費單號、顧客姓名或手機"></div>' +
         '<button type="button" class="add-item-btn" style="margin:0;" onclick="findTxUI()">搜尋</button></div><div id="fxList"></div></div>';
 
+      // 疑似重複
+      html += '<div class="card visible"><div class="section-title">🔁　疑似重複／單號打錯</div>' +
+        '<div class="hint" style="margin-top:0;">最近兩個月：同一天同顧客同金額有兩筆，或人員輸入的單號在櫃台日報找不到。' +
+        '確認是同一筆時，作廢人員輸入的那筆、保留櫃台日報的；作廢不會刪除，會留下紀錄。</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadDupUI()">載入</button><div id="dupBox"></div></div>';
+
       // 匯入舊 CRM
       const svc = d.people.filter(function (x) { return x.status !== '離職' && (x.dept === '諮詢部' || x.dept === '美容部'); });
       html += '<div class="card visible"><div class="section-title">📥　匯入諮詢師舊 CRM</div>' +
@@ -2183,6 +2193,7 @@
         list('ℹ️ 管理員修正過、這次不覆蓋', s.skippedFix) +
         list('ℹ️ 檔案裡重複的單號（只取第一筆）', s.dupInFile) +
         list('ℹ️ 款項名稱不認得', s.unknownPay) +
+        (done && s.suspects ? '<div class="done-bar" style="display:block; margin-top:10px;">⚠️ 匯入後發現 <b>' + s.suspects + '</b> 組疑似重複或單號打錯，請到下方「疑似重複」卡片確認。</div>' : '') +
         (done ? '' : '<button type="button" class="primary-btn" id="fdBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFrontDesk()"><span>確認匯入</span></button>') + '</div>';
     }
 
@@ -2349,6 +2360,48 @@
       api().withSuccessHandler(function () { showToast('已處理'); perfStale = true; loadSplitIssues(); })
         .withFailureHandler(function (err) { showToast(err.message); })
         .resolveSplitIssue(a);
+    }
+
+    // ---------- 管理員：疑似重複 ----------
+    let dupData = [];
+    function loadDupUI() {
+      const box = document.getElementById('dupBox');
+      box.innerHTML = '<div class="empty">檢查中...</div>';
+      api().withSuccessHandler(function (list) {
+        dupData = list;
+        if (!list.length) { box.innerHTML = '<div class="empty">沒有疑似重複。</div>'; return; }
+        box.innerHTML = list.map(function (g, gi) {
+          return '<div class="sub-panel"><div class="row-meta" style="margin-bottom:6px;"><b>' + esc(g.reason) + '</b></div>' +
+            g.rows.map(function (r, ri) {
+              return '<label style="display:flex; gap:8px; align-items:flex-start; font-weight:400; color:var(--text); margin-top:6px;">' +
+                '<input type="checkbox" id="dup' + gi + '_' + ri + '" style="width:20px; height:20px; margin-top:2px;"' + (!r.fromDesk && g.rows.length > 1 ? ' checked' : '') + '>' +
+                '<span>' + esc(r.date) + '　' + esc(r.branch) + '　' + esc(r.name) + '　' + money(r.amount) + '　單號 ' + esc(r.receipt || '－') +
+                '<br><span class="row-meta">負責 ' + esc(r.staff) + '　登錄 ' + esc(r.enteredBy) + (r.fromDesk ? '（櫃台日報）' : '') + '</span></span></label>';
+            }).join('') +
+            '<div class="jump-links" style="margin-top:8px;"><button class="mini-btn brown" data-g="' + gi + '" onclick="dupAct(this.dataset.g, true)">作廢勾選的</button>' +
+            '<button class="mini-btn grey" data-g="' + gi + '" onclick="dupAct(this.dataset.g, false)">不是重複，保留全部</button></div></div>';
+        }).join('');
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getDuplicateSuspects();
+    }
+
+    function dupAct(gi, isVoid) {
+      const g = dupData[Number(gi)];
+      const picked = g.rows.filter(function (r, ri) { return document.getElementById('dup' + gi + '_' + ri).checked; });
+      const ref = function (r) { return { row: r.row, id: r.id }; };
+      let req;
+      if (isVoid) {
+        if (!picked.length) { showToast('請勾選要作廢的那筆'); return; }
+        if (picked.length === g.rows.length && g.rows.length > 1) { showToast('至少要保留一筆'); return; }
+        const reason = prompt('作廢原因（例如：單號打錯，正確為 033872）', '');
+        if (reason === null) return;
+        req = { voids: picked.map(ref), reviews: g.rows.filter(function (r) { return picked.indexOf(r) === -1; }).map(ref), reason: reason };
+      } else {
+        req = { voids: [], reviews: g.rows.map(ref) };
+      }
+      api().withSuccessHandler(function () { showToast(isVoid ? '已作廢，並通知相關人員' : '已標記為不是重複'); perfStale = true; loadDupUI(); })
+        .withFailureHandler(function (err) { showToast(err.message); })
+        .resolveDuplicate(req);
     }
 
     // ---------- 管理員：修正消費紀錄 ----------
@@ -2724,6 +2777,16 @@
       // 付款結構
       html += payCardHtml_('💳　付款結構', d.pay, null);
 
+      // 本月業績異動
+      if (d.changes) {
+        let ch = '';
+        if (!d.scope && Object.keys(d.changes.byBranch).length) {
+          ch = '<div class="row-meta" style="margin-bottom:6px;">' + Object.keys(d.changes.byBranch).map(function (b) {
+            return esc(b) + ' <b>' + d.changes.byBranch[b] + '</b> 筆'; }).join('　') + '</div>';
+        }
+        html += changeCardHtml_('🔔　本月業績異動（共 ' + d.changes.total + ' 筆）', d.changes.list, true, ch);
+      }
+
       // Google 評論：每個人目前進度
       const rvList = d.staff.filter(function (p) { return p.rv > 0 || p.target.review > 0; }).slice().sort(function (a, b) {
         const pa = a.target.review ? a.rv / a.target.review : -1, pb = b.target.review ? b.rv / b.target.review : -1;
@@ -2943,25 +3006,9 @@
           (cb.otherShare ? '<div class="hint">非個人業績（員購、行銷配合等）佔 ' + pctOf_(cb.otherShare) + '</div>' : '') + '</div>';
       }
 
-      // 財務拆帳調整通知
-      if (d.splitNotice && d.splitNotice.length) {
-        html += '<div class="card visible"><div class="section-title">🧾　本月有 ' + d.splitNotice.length + ' 張單依財務拆帳調整</div>' +
-          '<div class="hint" style="margin-top:0;">財務拆帳表匯入後，業績依每個品項的諮詢師重新分配。</div>' +
-          d.splitNotice.map(function (x) {
-            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.customer) + '　單號 ' + esc(x.receipt) + '</span>' +
-              '<span class="amount">' + money(x.before) + ' → ' + money(x.after) + '</span></div><div class="row-meta">' + esc(x.date) + '　拆給：' + esc(x.people) + '</div></div>';
-          }).join('') + '</div>';
-      }
-
-      // 依櫃台日報更正的通知
-      if (d.corrected && d.corrected.length) {
-        html += '<div class="card visible"><div class="section-title">⚠️　本月有 ' + d.corrected.length + ' 筆依櫃台日報更正</div>' +
-          '<div class="hint" style="margin-top:0;">你輸入的金額或負責人跟櫃台日報不同，系統已改成櫃台日報的內容。如果是櫃台打錯，請告訴管理員修正。</div>' +
-          d.corrected.map(function (x) {
-            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.customer) + '　單號 ' + esc(x.receipt) + '</span>' +
-              '<span class="amount">' + money(x.amount) + '</span></div><div class="row-meta">' + esc(x.date) + '　' + esc(x.recon) + '　現在負責：' + esc(x.staff) + '</div></div>';
-          }).join('') + '</div>';
-      }
+      if (!d.viewingOther) setPerfBadge_(0);
+      // 我的業績異動（新的標「新」）
+      html += changeCardHtml_('🔔　我的業績異動', d.changes, false);
 
       // 月報表
       html += reportCardHtml_('個人月報', '下載' + (d.viewingOther ? '「' + esc(d.name) + '」的' : '我的') + '個人月報',
@@ -3182,6 +3229,29 @@
       return '<div class="group-title">🔁 單月重複消費 <span class="count-pill">' + n + ' 位</span></div>' +
         '<div class="row-meta">' + list.map(function (x) { return esc(x.name) + ' ' + x.n + ' 次'; }).join('、') +
         (n > list.length ? '…' : '') + '</div>';
+    }
+
+    function setPerfBadge_(n) {
+      const b = document.getElementById('perfBadge');
+      if (!b) return;
+      b.textContent = n > 99 ? '99+' : String(n);
+      b.style.display = n > 0 ? 'inline-block' : 'none';
+    }
+
+    // 業績異動清單（個人／主管共用）
+    function changeCardHtml_(title, list, showPeople, head) {
+      list = list || [];
+      let h = '<div class="card visible"><div class="section-title">' + title + '</div>' + (head || '');
+      if (!list.length) return h + '<div class="empty">本月沒有業績異動。</div></div>';
+      h += list.map(function (e) {
+        return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' +
+          (e.isNew ? '<span class="new-tag">新</span> ' : '') + esc(e.type) + '　' + esc(e.customer) + (e.receipt ? '　單號 ' + esc(e.receipt) : '') + '</span>' +
+          '<span class="row-meta">' + esc(e.timeText) + '</span></div>' +
+          '<div class="row-meta"><span class="chg-before">' + esc(e.before) + '</span> → <b>' + esc(e.after) + '</b>' +
+          (e.reason ? '<br>原因：' + esc(e.reason) : '') + (showPeople ? '<br>' + esc(e.branch) + '　相關：' + esc(e.people.join('、')) + '　操作：' + esc(e.by) : '') +
+          '</div></div>';
+      }).join('');
+      return h + '</div>';
     }
 
     function pctOf_(v) { return (v === undefined || v === null) ? '－' : Math.round(v * 1000) / 10 + '%'; }
