@@ -806,7 +806,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v36（業績異動提醒／疑似重複）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v36.1（權限「其他」／修正新增人員密碼）</div>
   </div>
 
   <script>
@@ -1700,7 +1700,7 @@
       const personRow = function (p) {
         return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(p.name) +
           '<span class="dept-tag">' + esc(p.dept) + '</span>' +
-          (p.role !== '諮詢師' ? '<span class="pay-tag">' + esc(p.role) + '</span>' : '') + '</div>' +
+          (p.role !== '諮詢／美容師' && p.role !== '諮詢師' ? '<span class="pay-tag">' + esc(p.role) + '</span>' : '') + '</div>' +
           '<div class="row-meta">' + esc(p.branch || '（未填診所）') + '　' + esc(p.email || '（未填 Email）') + '<br>' +
           (!p.login.has ? '<span style="color:#9B5F4D; font-weight:700;">尚未設定密碼</span>'
             : p.login.must ? '等她第一次登入改密碼' : (p.login.last ? '最後登入 ' + esc(p.login.last) : '已設定密碼')) + '</div></div>' +
@@ -1903,7 +1903,7 @@
 
     function showPersonForm(name) {
       const d = adminData;
-      const p = name ? d.people.filter(function (x) { return x.name === name; })[0] : { name: '', email: '', branch: '', dept: '諮詢部', role: '諮詢師', status: '在職' };
+      const p = name ? d.people.filter(function (x) { return x.name === name; })[0] : { name: '', email: '', branch: '', dept: '諮詢部', role: '諮詢／美容師', status: '在職' };
       const sel = function (id, list, val) {
         return '<select id="' + id + '">' + list.map(function (v) { return '<option' + (v === val ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
       };
@@ -1911,12 +1911,16 @@
         '<div class="section-title" style="margin-bottom:4px;">' + (name ? '編輯：' + esc(name) : '新增人員') + '</div>' +
         '<label style="margin-top:0;">姓名</label><input type="text" id="pfName" value="' + esc(p.name) + '"' + (name ? ' readonly style="background:#EFEAE4;"' : '') + '>' +
         (name ? '<div class="hint" style="margin-top:4px;">姓名不能修改（會對不上過去的業績紀錄）。</div>' : '') +
-        '<label>Email（公司 Workspace 帳號）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="name@公司網域">' +
+        '<label>登入用 Email（Gmail、Yahoo 都可以）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="例如 name@gmail.com" autocapitalize="off">' +
         '<label>所屬診所</label><input type="text" id="pfBranch" list="pfBranchList" value="' + esc(p.branch) + '">' +
         '<label>別名（櫃台日報、財務表上的寫法）</label><input type="text" id="pfAlias" value="' + esc(p.alias || '') + '" placeholder="例如：Yami、YAMI，用頓號分隔">' +
         '<datalist id="pfBranchList">' + d.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
-        '<div class="row-2"><div><label>部門</label>' + sel('pfDept', d.depts, p.dept) + '</div>' +
-        '<div><label>權限</label>' + sel('pfRole', d.roles, p.role) + '</div></div>' +
+        '<div class="row-2"><div><label>權限</label>' +
+          '<select id="pfRole" onchange="fillPfDept_(this.value, document.getElementById(\'pfDept\').value)">' +
+          d.roles.map(function (x) { return '<option' + (x === (p.role === '諮詢師' ? '諮詢／美容師' : p.role) ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
+          '</select></div>' +
+        '<div><label>部門</label><select id="pfDept"></select></div></div>' +
+        '<div class="hint" style="margin-top:4px;">「其他」：櫃台、行銷、護理等，只能建檔和輸入消費。主管、管理員的部門不限，部門不是諮詢部／美容部時不列入業績排名。</div>' +
         '<label>狀態</label>' + sel('pfStatus', ['在職', '離職'], p.status) +
         '<label>' + (name ? '重設密碼時使用的初始密碼' : '初始密碼') + '（選填）</label>' +
         '<input type="text" id="pfPw" placeholder="例如 E19840312；留空＝系統自動產生" autocomplete="off">' +
@@ -1926,6 +1930,7 @@
         (name ? '<button type="button" class="add-item-btn" data-name="' + esc(name) + '" onclick="resetPwUI(this.dataset.name)">🔑 重設密碼（產生臨時密碼）</button>' :
           '<div class="hint">儲存後系統會產生一組臨時密碼，請交給她本人；第一次登入會要求改密碼。</div>') +
         '<button type="button" class="link-btn" style="margin-top:8px;" onclick="document.getElementById(\'personForm\').innerHTML=\'\'">取消</button></div>';
+      fillPfDept_(document.getElementById('pfRole').value, p.dept);
       document.getElementById('personForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -1946,13 +1951,31 @@
       btn.innerHTML = '<span>儲存中...</span>';
       api()
         .withSuccessHandler(function (r) {
-          showToast(r && r.warn ? r.warn : '人員資料已儲存');
+          if (r && r.pwError) alert(r.pwError);
+          else showToast(r && r.warn ? r.warn : '人員資料已儲存');
           perfStale = true;
           adminTempNotice = r && r.temp ? r : null;
-          loadAdmin();
+          loadAdmin();                                   // 一律重新載入清單
         })
-        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存</span>'; showToast(err.message); })
+        .withFailureHandler(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>儲存</span>';
+          alert(err.message);
+          // 失敗也重新載入清單（有些情況人員其實已經存進去），但保留表單讓你修改後再存
+          api().withSuccessHandler(function (d) { adminData = d; }).getAdminData();
+        })
         .savePerson(payload);
+    }
+
+    // 人員表單：依權限只列出對應的部門
+    function fillPfDept_(role, current) {
+      const svc = ['諮詢部', '美容部'];
+      const all = (adminData && adminData.depts) || svc;
+      const list = role === '其他' ? all.filter(function (x) { return svc.indexOf(x) === -1; })
+        : role === '諮詢／美容師' ? svc : all;
+      const sel = document.getElementById('pfDept');
+      if (!sel) return;
+      sel.innerHTML = list.map(function (x) { return '<option' + (x === current ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('');
     }
 
     // ===================== 未消耗療程（POS） =====================
