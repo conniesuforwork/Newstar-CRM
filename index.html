@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v37（進度燈號／公休國定假日／顧客歷程／必要分頁自動建立）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v37.2（付款三層標題／新舊客以櫃台日報為起點／同單號分業績）</div>
   </div>
 
   <script>
@@ -2152,8 +2152,15 @@
               }
               if (hi < 0) return;
               const h = aoa[hi].map(function (x) { return String(x).replace(/\s+/g, ''); });
-              const sub = (aoa[hi + 1] || []).map(function (x) { return String(x).replace(/\s+/g, ''); });
-              const hasSub = sub.some(function (x) { return /現金|匯款|中信|紅陽|仲信|和潤/.test(x); });
+              // 標題可能有 2～3 列（金額 → 刷卡／分期 → 中信／紅陽…），收費單號欄是空的列都算標題
+              const headRows = [];
+              const rcCol = aoa[hi].map(function (x) { return String(x).replace(/\s+/g, ''); }).indexOf('收費單號');
+              for (let k = hi + 1; k < Math.min(hi + 4, aoa.length); k++) {
+                const rowk = aoa[k] || [];
+                if (String(rowk[rcCol] == null ? '' : rowk[rcCol]).trim()) break;
+                if (!rowk.some(function (x) { return String(x).trim(); })) break;
+                headRows.push(rowk.map(function (x) { return String(x).replace(/\s+/g, ''); }));
+              }
               const col = function () {
                 for (let a = 0; a < arguments.length; a++) {
                   const k = arguments[a];
@@ -2166,14 +2173,24 @@
                 cust: col('新/舊客', '新舊客'), receipt: col('收費單號'), staff: col('銷售人員', '業績人員'), total: col('總計'),
                 pay: col('款項'), channel: col('預約管道') };
               // 付款欄位名稱：第二列（中信）加上第一列合併儲存格的上層（刷卡）→「刷卡-中信」
+              // 付款欄名稱：每一層標題在合併儲存格範圍內往右補齊，再串起來 → 現金、匯款、刷卡-中信、刷卡-紅陽、分期-仲信、分期-和潤
               const labels = [];
-              let parent = '';
+              const layers = [h].concat(headRows);
+              const filled = layers.map(function (row) {
+                const out = [];
+                let last = '';
+                for (let j = c.receipt + 1; j < c.staff; j++) { if (row[j]) last = row[j]; out[j] = last; }
+                return out;
+              });
               for (let j = c.receipt + 1; j < c.staff; j++) {
-                if (h[j]) parent = h[j];
-                const s = hasSub ? sub[j] : '';
-                labels[j] = s ? ((parent && parent !== '金額' && parent !== s) ? parent + '-' + s : s) : (h[j] || '');
+                const parts = [];
+                layers.forEach(function (row, li) {
+                  const v = li < layers.length - 1 ? filled[li][j] : row[j];      // 上層往右補齊；最下層只看自己這格
+                  if (v && v !== '金額' && parts.indexOf(v) === -1) parts.push(v);
+                });
+                labels[j] = parts.join('-');
               }
-              for (let i = hi + (hasSub ? 2 : 1); i < aoa.length; i++) {
+              for (let i = hi + 1 + headRows.length; i < aoa.length; i++) {
                 const r = aoa[i];
                 const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
                 if (!g('receipt') && !g('name')) continue;
@@ -2228,12 +2245,14 @@
         return;
       }
       box.innerHTML = '<div class="sub-panel">' + (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
-        '<div class="row-meta" style="margin-top:6px;">共 <b>' + s.rows + '</b> 筆：新增 <b>' + s.creates + '</b>、已對上 ' + s.same +
+        '<div class="row-meta" style="margin-top:6px;">共 <b>' + s.rows + '</b> 列' + (s.receipts !== undefined && s.receipts !== s.rows ? '（' + s.receipts + ' 張單）' : '') +
+        '：新增 <b>' + s.creates + '</b>、已對上 ' + s.same +
         '、資料更新 ' + s.refresh + '<br>內部單（員購等）' + s.internal + ' 筆、還沒有手機的顧客 ' + s.noPhone + ' 筆（之後建檔會自動接上）' +
         (s.closedNew ? '<br>⚠️ 其中 ' + s.closedNew + ' 筆是已關帳月份的新資料' : '') + '</div>' +
         list('⚠️ 依櫃台日報更正人員輸入（會通知人員）', s.corrections, true) +
         list('ℹ️ 管理員修正過、這次不覆蓋', s.skippedFix) +
-        list('ℹ️ 檔案裡重複的單號（只取第一筆）', s.dupInFile) +
+        (s.deskSplit ? '<div class="row-meta">👥 同一張單由多位銷售人員分業績：<b>' + s.deskSplit + '</b> 張（已合併成一張單，業績依各列金額分給各人）</div>' : '') +
+        list('⚠️ 同一張單、同一位銷售人員、同金額出現兩次（疑似重複輸入，只算一次）', s.dupInFile, true) +
         list('ℹ️ 款項名稱不認得', s.unknownPay) +
         (done && s.suspects ? '<div class="done-bar" style="display:block; margin-top:10px;">⚠️ 匯入後發現 <b>' + s.suspects + '</b> 組疑似重複或單號打錯，請到下方「疑似重複」卡片確認。</div>' : '') +
         (done ? '' : '<button type="button" class="primary-btn" id="fdBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFrontDesk()"><span>確認匯入</span></button>') + '</div>';
