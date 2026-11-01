@@ -272,7 +272,7 @@
     .tgt-grid .th { color: var(--text-muted); font-weight: 700; font-size: 12.5px; }
     .role-other #tabPerf, .role-other .jump-links, .role-other #toggleReassignBtn, .role-other #reassignPanel,
     .role-other #changePanel, .role-other #fuCard, .role-other #consultCard, .role-other #takeoverPanel,
-    .role-other #txMeBtn { display: none !important; }
+    .role-other #txMeBtn, .role-other #historyBtn, .role-other #historyBox { display: none !important; }
     .role-other-only { display: none; }
     .role-other .role-other-only { display: block; }
     .sub-row { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text-muted); padding: 2px 0 2px 14px; }
@@ -286,6 +286,13 @@
     .must-change #adminView { display: none !important; }
     .must-change #pwView { display: block; }
     .temp-pw { font-size: 26px; font-weight: 800; letter-spacing: 3px; margin: 6px 0; color: var(--text); font-family: monospace; }
+    .pace-box { border-radius: 12px; padding: 8px 12px; margin-top: 8px; font-size: 14px; line-height: 1.6; }
+    .pace-green { background: #E6ECE1; color: #3F5A35; }
+    .pace-yellow { background: #FFF1CC; color: #7A5B00; }
+    .pace-red { background: #F8DCD5; color: #9B3F2D; }
+    .pace-done { background: #E6ECE1; color: #3F5A35; }
+    .pace-miss { background: #F8DCD5; color: #9B3F2D; }
+    .lt { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; margin: 2px 4px 0 0; font-weight: 600; }
     .tab-badge { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; margin-left: 4px;
       border-radius: 999px; background: #D0573F; color: #fff; font-size: 11.5px; font-weight: 700; vertical-align: 2px; }
     .chg-before { color: var(--text-muted); text-decoration: line-through; }
@@ -478,6 +485,8 @@
 
           <div id="ownerNote" class="done-bar" style="margin:10px 0 0;"></div>
         <div id="courseBox" class="sub-panel" style="display:none; border-style:solid;"></div>
+        <button type="button" class="link-btn hide-other" id="historyBtn" style="margin-top:8px;" onclick="loadHistoryUI()">📒 顧客歷程（消費、諮詢、關懷）</button>
+        <div id="historyBox"></div>
 
         <div class="jump-links">
           <button type="button" class="mini-btn grey" onclick="jumpTo('consultCard')">🗒 寫諮詢紀錄</button>
@@ -748,7 +757,7 @@
           <div class="row-2">
             <div>
               <label>是否預約回診</label>
-              <select id="csBooked" onchange="document.getElementById('csBookDateWrap').style.visibility = this.value === '是' ? 'visible' : 'hidden'">
+              <select id="csBooked" onchange="document.getElementById('csBookDateWrap').style.visibility = this.value === '是' ? 'visible' : 'hidden'; document.getElementById('csBookHint').style.display = this.value === '是' ? 'block' : 'none';">
                 <option>否</option>
                 <option>是</option>
               </select>
@@ -758,6 +767,7 @@
               <input type="date" id="csBookDate">
             </div>
           </div>
+          <div class="hint" id="csBookHint" style="display:none; margin-top:4px;">✅ 送出後會自動在「術後關懷與追蹤」建立回診提醒，出現在你的關懷待辦裡，不用另外再記。</div>
 
           <label>贈送內容</label>
           <input type="text" id="csGift" placeholder="例如：美白IV（生日禮）">
@@ -806,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v36.1（權限「其他」／修正新增人員密碼）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v37（進度燈號／公休國定假日／顧客歷程／必要分頁自動建立）</div>
   </div>
 
   <script>
@@ -1268,6 +1278,7 @@
       document.getElementById('takeoverBtn').style.display = (customer.consultant && customer.consultant === myName_()) ? 'none' : 'inline-flex';
       document.getElementById('takeoverPanel').style.display = 'none';
       loadCustomerCourses_(customer);
+      document.getElementById('historyBox').innerHTML = '';
       const ownerNote = document.getElementById('ownerNote');
       if (customer.consultant && customer.consultant !== myName_() && customer.consultantStatus !== '離職' && perfUser && !perfUser.isOther) {
         ownerNote.innerHTML = '這位顧客目前是 <b>' + esc(customer.consultant) + '</b> 的顧客。<br>本次消費可以直接把「負責諮詢師」改成你，業績就算你的，<b>不用等主管核准</b>；想長期經營再按「🙋 申請承接」。';
@@ -1811,6 +1822,14 @@
         '<div class="hint">這份清單會用在：新增顧客／消費診所／更換診所的下拉選單、集團主管切換各店、人員的所屬診所。' +
         '名稱要和消費紀錄裡的寫法一致（例如都寫「長安診所」）。還有在職人員的診所不能刪除。</div></div>';
 
+      // 公休與國定假日
+      const yNow = new Date().getFullYear();
+      html += '<div class="card visible"><div class="section-title">🗓️　公休與國定假日（業績進度用）</div>' +
+        '<div class="hint" style="margin-top:0;">每家店的固定公休與國定假日，決定「應有進度」怎麼算。</div>' +
+        '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">年度</label><select id="rsYear">' +
+          [yNow, yNow + 1].map(function (y) { return '<option>' + y + '</option>'; }).join('') + '</select></div>' +
+        '<button type="button" class="add-item-btn" style="margin:0;" onclick="loadRestUI()">載入設定</button></div><div id="rsBox"></div></div>';
+
       // 部門設定
       html += '<div class="card visible"><div class="section-title">🏢　部門設定</div>' +
         '<div class="group-title first">服務部門（有顧客關懷、業績、目標）</div><div class="jump-links" style="margin-top:4px;">' +
@@ -1896,7 +1915,7 @@
     function resetPwUI(name) {
       if (!confirm('要替「' + name + '」重設密碼嗎？她目前的密碼和所有登入會立即失效。')) return;
       api()
-        .withSuccessHandler(function (r) { adminTempNotice = r; renderAdmin(); })
+        .withSuccessHandler(function (r) { adminTempNotice = r; loadAdmin(); })   // 重新載入清單，狀態立刻更新
         .withFailureHandler(function (err) { showToast(err.message); })
         .adminResetPassword(name, (document.getElementById('pfPw') || {}).value || '');
     }
@@ -2385,6 +2404,109 @@
         .resolveSplitIssue(a);
     }
 
+    // ---------- 顧客歷程 ----------
+    function loadHistoryUI() {
+      const box = document.getElementById('historyBox');
+      if (box.innerHTML) { box.innerHTML = ''; return; }          // 再按一次收起來
+      const ph = selectedCustomer && selectedCustomer.phone;
+      if (!ph) { showToast('請先選擇顧客'); return; }
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      const tag = { '消費': 'pay-tag', '諮詢': 'dept-tag', '關懷': 'new-tag' };
+      api().withSuccessHandler(function (list) {
+        box.innerHTML = '<div class="sub-panel">' + (list.length ? list.map(function (e) {
+          return '<div class="row-item"><div class="row-meta"><span class="' + tag[e.kind] + '">' + esc(e.kind) + '</span> ' + esc(e.date) +
+            (e.who ? '　' + esc(e.who) : '') + (e.branch ? '　' + esc(e.branch) : '') + '</div><div style="font-size:14px;">' + esc(e.text) + '</div></div>';
+        }).join('') : '<div class="empty">這位顧客還沒有任何紀錄。</div>') + '<div class="hint">最多顯示最近 40 筆。</div></div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getCustomerHistory(ph);
+    }
+
+    // ---------- 管理員：公休與國定假日 ----------
+    let restData = null;
+    const WK = ['日', '一', '二', '三', '四', '五', '六'];
+
+    function loadRestUI() {
+      const box = document.getElementById('rsBox');
+      box.innerHTML = '<div class="empty">載入中...</div>';
+      api().withSuccessHandler(function (d) {
+        restData = d;
+        restData.list = d.holidays.map(function (h) { return { date: h.date, name: h.name, on: true }; });
+        renderRestUI_();
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getRestSettings(document.getElementById('rsYear').value);
+    }
+
+    function renderRestUI_() {
+      const d = restData;
+      let h = '<div class="group-title first">各店公休規則</div>';
+      h += d.clinics.map(function (b, bi) {
+        const r = d.rules[b] || { fixed: [], holiday: 'fixed', satFlex: false };
+        return '<div class="sub-panel"><b>' + esc(b) + '</b><div class="row-meta" style="margin-top:4px;">固定公休：' +
+          WK.map(function (w, wi) {
+            return '<label style="display:inline-flex; align-items:center; gap:3px; margin-right:8px; font-weight:400; color:var(--text);">' +
+              '<input type="checkbox" id="rsF' + bi + '_' + wi + '" style="width:18px; height:18px;"' + (r.fixed.indexOf(wi) !== -1 ? ' checked' : '') + '>週' + w + '</label>';
+          }).join('') + '</div>' +
+          '<div class="row-2"><div><label>國定假日</label><select id="rsH' + bi + '"><option value="fixed"' + (r.holiday === 'fixed' ? ' selected' : '') +
+            '>當天固定休</option><option value="flex"' + (r.holiday === 'flex' ? ' selected' : '') + '>算入排休額度（人員自己排）</option></select></div>' +
+          '<div><label>週六</label><select id="rsS' + bi + '"><option value="0"' + (!r.satFlex ? ' selected' : '') + '>正常上班</option><option value="1"' +
+            (r.satFlex ? ' selected' : '') + '>算入排休額度</option></select></div></div></div>';
+      }).join('');
+      h += '<div class="group-title">' + d.year + ' 年國定假日 <span class="count-pill">' + d.list.filter(function (x) { return x.on; }).length + ' 天</span></div>' +
+        '<button type="button" class="add-item-btn" onclick="fetchHolUI()">從 Google 台灣節日帶入</button>' +
+        '<div class="hint">帶入後請逐一確認：<b>只勾真正放假的日子</b>（情人節、母親節等紀念日不要勾）。</div>' +
+        (d.list.length ? d.list.map(function (x, i) {
+          return '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:4px;">' +
+            '<input type="checkbox" style="width:18px; height:18px;"' + (x.on ? ' checked' : '') + ' onchange="restData.list[' + i + '].on=this.checked">' +
+            esc(x.date) + '（週' + WK[new Date(x.date.replace(/-/g, '/')).getDay()] + '）' + esc(x.name) + '</label>';
+        }).join('') : '<div class="empty">還沒有國定假日。</div>') +
+        '<div class="row-2" style="margin-top:10px; align-items:end;"><div><input type="date" id="rsNewD"></div>' +
+        '<div><input type="text" id="rsNewN" placeholder="名稱，例如：補假"></div></div>' +
+        '<button type="button" class="link-btn" onclick="addHolUI()">＋ 手動加一天</button>' +
+        '<button type="button" class="primary-btn" id="rsBtn" style="margin-top:14px; box-shadow:none;" onclick="saveRestUI()"><span>儲存公休與國定假日</span></button>';
+      document.getElementById('rsBox').innerHTML = h;
+    }
+
+    function fetchHolUI() {
+      showToast('讀取 Google 台灣節日...');
+      api().withSuccessHandler(function (list) {
+        const have = {};
+        restData.list.forEach(function (x) { have[x.date] = x; });
+        list.forEach(function (x) {
+          if (have[x.date]) { if (have[x.date].name.indexOf(x.name) === -1) have[x.date].name += '／' + x.name; return; }
+          const o = { date: x.date, name: x.name, on: !!x.suggest };
+          restData.list.push(o);
+          have[x.date] = o;
+        });
+        restData.list.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+        renderRestUI_();
+        showToast('已帶入 ' + list.length + ' 個日期，請確認勾選');
+      }).withFailureHandler(function (err) { showToast(err.message); }).fetchGoogleHolidays(restData.year);
+    }
+
+    function addHolUI() {
+      const dt = document.getElementById('rsNewD').value;
+      if (!dt) { showToast('請選日期'); return; }
+      if (dt.slice(0, 4) !== String(restData.year)) { showToast('請選 ' + restData.year + ' 年的日期'); return; }
+      restData.list = restData.list.filter(function (x) { return x.date !== dt; });
+      restData.list.push({ date: dt, name: document.getElementById('rsNewN').value.trim() || '國定假日', on: true });
+      restData.list.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      renderRestUI_();
+    }
+
+    function saveRestUI() {
+      const rules = {};
+      restData.clinics.forEach(function (b, bi) {
+        rules[b] = { fixed: WK.map(function (w, wi) { return document.getElementById('rsF' + bi + '_' + wi).checked ? wi : -1; }).filter(function (x) { return x >= 0; }),
+          holiday: document.getElementById('rsH' + bi).value, satFlex: document.getElementById('rsS' + bi).value === '1' };
+      });
+      const btn = document.getElementById('rsBtn');
+      btn.disabled = true;
+      api().withSuccessHandler(function () { btn.disabled = false; showToast('已儲存，業績進度會用新的設定計算'); perfStale = true; })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .saveRestSettings({ year: restData.year, rules: rules,
+          holidays: restData.list.filter(function (x) { return x.on; }).map(function (x) { return { date: x.date, name: x.name }; }) });
+    }
+
     // ---------- 管理員：疑似重複 ----------
     let dupData = [];
     function loadDupUI() {
@@ -2743,7 +2865,9 @@
     }
 
     // ---------- 主管：全店總覽 ----------
+    let teamData = null, teamSortLag = false;     // 主管畫面：可改依落後程度排序
     function renderTeam(d) {
+      teamData = d;
       const s = d.store, t = s.target;
       let html = '<div class="perf-head"><span>' + whoSelect_(viewAs) + '　' + d.updatedAt + ' 更新</span>' +
         '<button class="link-btn" onclick="loadPerf()">重新整理</button></div>';
@@ -2796,6 +2920,15 @@
         (d.splitStat && d.splitStat.total ? '<div class="hint">財務拆帳完成度：<b>' + d.splitStat.done + ' / ' + d.splitStat.total + '</b> 張單（' +
           Math.round(d.splitStat.done / d.splitStat.total * 100) + '%）' + (d.splitStat.done < d.splitStat.total ? '，未拆帳的單業績暫依櫃台日報計算' : '，本月業績分配已定案') + '</div>' : '') +
         '</div>';
+
+      // 店的進度燈號
+      if (d.storeLights) {
+        const sl = d.storeLights;
+        html += '<div class="card visible"><div class="section-title">🚦　' + esc(d.scope) + ' 本月進度</div>' +
+          paceText_(sl.total, '全店總業績') + paceText_(sl.newC, '全店新客') + paceText_(sl.oldC, '全店舊客') +
+          (!sl.total && !sl.newC && !sl.oldC ? '<div class="empty">本月還沒設定這家店人員的目標。</div>' : '') +
+          '<div class="hint">' + offText_(sl) + '（依' + esc(d.scope) + '公休規則）</div></div>';
+      }
 
       // 付款結構
       html += payCardHtml_('💳　付款結構', d.pay, null);
@@ -2852,28 +2985,44 @@
           return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(b.name) + '</span><span class="amount">' + money(b.s) + '</span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.max(b.s, 0) / bmax * 100 + '%"></div></div>' +
             '<div class="row-meta">新客 ' + money(b.ns) + '（' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次<br>' +
-            '現金 ' + money(b.cash) + '（佔 ' + pctOf_(b.cashRatio) + '）' +
+            (b.lights ? ltBadge_(b.lights.total, '總') + ltBadge_(b.lights.newC, '新客') + ltBadge_(b.lights.oldC, '舊客') + '<br>' : '') +
+            '現金 ' + money(b.cash) + '（佔 ' + ratioPct_(b.cashRatio) + '）' +
             (b.splitStat && b.splitStat.total ? '　財務拆帳 ' + b.splitStat.done + '/' + b.splitStat.total : '') + '</div></div>';
         }).join('') + '</div>';
       }
 
-      // 每位諮詢師
-      html += '<div class="card visible"><div class="section-title">👥　' + esc(d.scope ? d.scope + ' ' : '') + '諮詢師業績（依總業績排序）</div>' +
-        (d.staff.length ? d.staff.map(function (p, i) {
+      // 每位諮詢師（可依落後程度排序）
+      const cntLt = { red: 0, yellow: 0 };
+      d.staff.forEach(function (p) { if (p.lights && p.lights.worst === 3) cntLt.red++; else if (p.lights && p.lights.worst === 2) cntLt.yellow++; });
+      const staffList = d.staff.slice();
+      if (teamSortLag) staffList.sort(function (a, b) {
+        const wa = (a.lights && a.lights.worst) || 0, wb = (b.lights && b.lights.worst) || 0;
+        if (wb !== wa) return wb - wa;
+        const pa = a.lights && a.lights.total ? a.lights.total.pct : 9, pb = b.lights && b.lights.total ? b.lights.total.pct : 9;
+        return pa - pb;
+      });
+      html += '<div class="card visible"><div class="section-title">👥　' + esc(d.scope ? d.scope + ' ' : '') + '諮詢師業績（' + (teamSortLag ? '依落後程度' : '依總業績') + '排序）</div>' +
+        ((cntLt.red || cntLt.yellow) ? '<div class="pace-box ' + (cntLt.red ? 'pace-red' : 'pace-yellow') + '" style="margin:0 0 8px;">⚠️ 本月 <b>' + (cntLt.red + cntLt.yellow) +
+          ' 人</b>進度落後（🔴 ' + cntLt.red + '、🟡 ' + cntLt.yellow + '）</div>' : '') +
+        '<button type="button" class="link-btn" onclick="teamSortLag=!teamSortLag; renderTeam(teamData)">' + (teamSortLag ? '改依總業績排序' : '改依落後程度排序') + '</button>' +
+        (staffList.length ? staffList.map(function (p, i) {
           const tg = p.target;
           const click = p.canView ? ' style="cursor:pointer;" data-name="' + esc(p.name) + '" onclick="switchViewAs(this.dataset.name)"' : '';
-          return '<div class="row-item"' + click + '>' +
+          const lw = p.lights && p.lights.worst;
+          const rowBg = lw === 3 ? ' pace-red' : lw === 2 ? ' pace-yellow' : '';
+          return '<div class="row-item' + rowBg + '"' + click + (rowBg ? ' style="border-radius:12px; padding:10px;' + (p.canView ? ' cursor:pointer;' : '') + '"' : '') + '>' +
             '<div class="row-top"><span class="row-name">' + (i + 1) + '. ' + esc(p.name) +
             (d.dept || !p.dept ? '' : '<span class="dept-tag">' + esc(p.dept) + '</span>') + '</span>' +
             '<span class="amount">' + money(p.s) + (p.canView ? ' <span style="color:var(--text-muted); font-weight:400;">›</span>' : '') + '</span></div>' +
             (tg.total ? '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.min(pctOf_(p.s, tg.total), 100) + '%"></div></div>' : '') +
+            (p.lights ? '<div>' + ltBadge_(p.lights.total, '總') + ltBadge_(p.lights.newC, '新客') + ltBadge_(p.lights.oldC, '舊客') + '</div>' : '') +
             '<div class="row-meta">總目標 ' + (tg.total ? money(tg.total) + '・' + pctText_(p.s, tg.total) : '未設') + '<br>' +
             '新客 <b>' + money(p.ns) + '</b>（' + pctText_(p.ns, tg.newT) + '・' + p.nc + ' 位）<br>' +
             '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '・' + p.oc + ' 位／' + p.od + ' 人次）<br>' +
             '成交 ' + p.c + ' 人次' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') +
-            '<br>💳 現金 ' + money(p.cash || 0) + '（個人現金佔比 ' + pctOf_(p.cashRatio) + '）' +
-            (p.mainBranch ? '<br>🏆 佔' + esc(p.mainBranch) + '：業績 <b>' + pctOf_(p.shareStore) + '</b>、現金 <b>' + pctOf_(p.cashShareStore) + '</b>' : '') +
-            (p.shareGroup !== undefined ? '　佔集團：業績 ' + pctOf_(p.shareGroup) + '、現金 ' + pctOf_(p.cashShareGroup) : '') + '</div></div>';
+            '<br>💳 現金 ' + money(p.cash || 0) + '（個人現金佔比 ' + ratioPct_(p.cashRatio) + '）' +
+            (p.mainBranch ? '<br>🏆 佔' + esc(p.mainBranch) + '：業績 <b>' + ratioPct_(p.shareStore) + '</b>、現金 <b>' + ratioPct_(p.cashShareStore) + '</b>' : '') +
+            (p.shareGroup !== undefined ? '　佔集團：業績 ' + ratioPct_(p.shareGroup) + '、現金 ' + ratioPct_(p.cashShareGroup) : '') + '</div></div>';
         }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
 
       html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
@@ -2919,6 +3068,8 @@
       html += '<div class="card visible hero">' +
         '<div class="label">' + d.monthLabel + '累積業績</div>' +
         '<div class="big">' + money(k.month.s) + '</div>' + targetHtml +
+        (d.pace ? paceText_(d.pace.total, '總業績') +
+          '<div class="hint" style="margin-top:6px;">' + offText_(d.pace) + '（依' + esc(d.pace.branch) + '的公休規則計算進度）</div>' : '') +
         '<div class="hint">' + growth + '<br>依目前速度，月底預估 <b>' + money(k.forecast) + '</b>' +
         (d.rank ? '<br>🏅 本月排名第 <b>' + d.rank.rank + '</b> 名（共 ' + d.rank.total + ' 位）' : '') +
         '</div></div>';
@@ -2926,8 +3077,10 @@
       // --- 新客／舊客 ---
       const no = d.newOld;
       html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
-        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次（收到尾款或全額才算結案）') +
-        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 人次') +
+        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次（收到尾款或全額才算結案）' +
+          (d.pace ? paceText_(d.pace.newC, '新客') : '')) +
+        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 人次' +
+          (d.pace ? paceText_(d.pace.oldC, '舊客') : '')) +
         repeatHtml_(no.repeat) + '</div>';
 
       // --- Google 評論 ---
@@ -3022,11 +3175,11 @@
           cb.list.map(function (x, i) {
             return '<div class="row-item"' + (x.me ? ' style="background:var(--primary-light); border-radius:10px; padding:8px;"' : '') + '>' +
               '<div class="row-top"><span class="row-name" style="font-size:15px;">' + (i + 1) + '. ' + esc(x.name) + (x.me ? '（我）' : '') +
-              ' <span class="dept-tag">' + esc(x.dept) + '</span></span><span class="amount">' + pctOf_(x.share) + '</span></div>' +
+              ' <span class="dept-tag">' + esc(x.dept) + '</span></span><span class="amount">' + ratioPct_(x.share) + '</span></div>' +
               '<div class="progress" style="height:6px; margin:4px 0;"><div style="width:' + Math.min(x.share * 100, 100) + '%"></div></div>' +
-              '<div class="row-meta">現金佔全店 ' + pctOf_(x.cashShare) + '</div></div>';
+              '<div class="row-meta">現金佔全店 ' + ratioPct_(x.cashShare) + '</div></div>';
           }).join('') +
-          (cb.otherShare ? '<div class="hint">非個人業績（員購、行銷配合等）佔 ' + pctOf_(cb.otherShare) + '</div>' : '') + '</div>';
+          (cb.otherShare ? '<div class="hint">非個人業績（員購、行銷配合等）佔 ' + ratioPct_(cb.otherShare) + '</div>' : '') + '</div>';
       }
 
       if (!d.viewingOther) setPerfBadge_(0);
@@ -3254,6 +3407,27 @@
         (n > list.length ? '…' : '') + '</div>';
     }
 
+    // ---------- 進度燈號 ----------
+    const LT_ICON = { green: '🟢', yellow: '🟡', red: '🔴', done: '✅', miss: '❌' };
+    function paceText_(l, label) {
+      if (!l) return '';
+      if (!l.level) return '<div class="pace-box" style="background:#F3EFE9; color:var(--text-muted);">' + label + '：月初前幾個工作天先不判斷進度</div>';
+      if (l.final) return '<div class="pace-box pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.level === 'done' ? '已達成目標' : '未達成目標（達成 ' + Math.round(l.pct * 100) + '%）') + '</div>';
+      const pct = Math.round(l.pct * 100);
+      if (l.level === 'green') return '<div class="pace-box pace-green">🟢 ' + label + '進度正常（應有 ' + money(l.expected) + '，進度 ' + pct + '%）</div>';
+      return '<div class="pace-box pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + '<b>目前落後進度 ' + money(l.gap) + '</b>（應有 ' + money(l.expected) + '，進度 ' + pct + '%）' +
+        (l.perDay ? '<br>之後平均每個工作天要做 <b>' + money(l.perDay) + '</b> 才能達標' : '') + '</div>';
+    }
+    // 「本月應休 11 天（固定公休 4 天＋排休 7 天），工作 20 天」
+    function offText_(p) {
+      return '本月應休 <b>' + p.off + '</b> 天（固定公休 ' + p.fixedDays + ' 天' + (p.flexDays ? '＋排休 ' + p.flexDays + ' 天' : '') + '），工作 ' + p.work + ' 天';
+    }
+
+    function ltBadge_(l, label) {
+      if (!l || !l.level) return '';
+      return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
+    }
+
     function setPerfBadge_(n) {
       const b = document.getElementById('perfBadge');
       if (!b) return;
@@ -3277,7 +3451,7 @@
       return h + '</div>';
     }
 
-    function pctOf_(v) { return (v === undefined || v === null) ? '－' : Math.round(v * 1000) / 10 + '%'; }
+    function ratioPct_(v) { return (v === undefined || v === null) ? '－' : Math.round(v * 1000) / 10 + '%'; }
 
     // 付款結構卡片：大類金額與佔比、現金佔比；個人畫面再加全店平均
     function payCardHtml_(title, p, cb) {
@@ -3285,13 +3459,13 @@
       const cats = Object.keys(p.byCat || {}).sort(function (a, b) { return p.byCat[b] - p.byCat[a]; });
       let h = '<div class="card visible"><div class="section-title">' + title + '</div>';
       if (!p.paid && !p.pending) return h + '<div class="empty">本月還沒有收款資料。</div></div>';
-      h += '<div class="kpi-grid" style="margin-bottom:8px;">' + kpiBox('現金佔比', pctOf_(p.cashRatio), '現金 ' + money(p.cash) + '<br>實收 ' + money(p.paid)) +
-        (cb ? kpiBox(esc(cb.branch) + ' 平均', pctOf_(cb.cashRatio), '全店現金佔比') : '') + '</div>';
+      h += '<div class="kpi-grid" style="margin-bottom:8px;">' + kpiBox('現金佔比', ratioPct_(p.cashRatio), '現金 ' + money(p.cash) + '<br>實收 ' + money(p.paid)) +
+        (cb ? kpiBox(esc(cb.branch) + ' 平均', ratioPct_(cb.cashRatio), '全店現金佔比') : '') + '</div>';
       h += cats.map(function (k) {
         const r = p.paid ? p.byCat[k] / p.paid : 0;
         return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(k) + '</span><span class="amount">' + money(p.byCat[k]) + '</span></div>' +
           '<div class="progress" style="height:6px; margin:4px 0;"><div style="width:' + r * 100 + '%"></div></div>' +
-          '<div class="row-meta">佔 ' + pctOf_(r) + '</div></div>';
+          '<div class="row-meta">佔 ' + ratioPct_(r) + '</div></div>';
       }).join('');
       if (p.pending) h += '<div class="hint">另有 ' + money(p.pending) + ' 尚未有付款資料（等櫃台日報匯入），不列入佔比。</div>';
       return h + '</div>';
