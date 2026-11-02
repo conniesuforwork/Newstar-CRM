@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38（營業報表多分頁／新客來源表／美容部 RFM／診所目標）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38.1（實際工作天／拆帳自動配對與取消配對／離職免 Email）</div>
   </div>
 
   <script>
@@ -1946,7 +1946,7 @@
         '<div class="section-title" style="margin-bottom:4px;">' + (name ? '編輯：' + esc(name) : '新增人員') + '</div>' +
         '<label style="margin-top:0;">姓名</label><input type="text" id="pfName" value="' + esc(p.name) + '"' + (name ? ' readonly style="background:#EFEAE4;"' : '') + '>' +
         (name ? '<div class="hint" style="margin-top:4px;">姓名不能修改（會對不上過去的業績紀錄）。</div>' : '') +
-        '<label>登入用 Email（Gmail、Yahoo 都可以）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="例如 name@gmail.com" autocapitalize="off">' +
+        '<label>登入用 Email（Gmail、Yahoo 都可以；離職人員可留空）</label><input type="text" id="pfEmail" value="' + esc(p.email) + '" placeholder="例如 name@gmail.com" autocapitalize="off">' +
         '<label>所屬診所</label><input type="text" id="pfBranch" list="pfBranchList" value="' + esc(p.branch) + '">' +
         '<label>別名（櫃台日報、財務表上的寫法）</label><input type="text" id="pfAlias" value="' + esc(p.alias || '') + '" placeholder="例如：Yami、YAMI，用頓號分隔">' +
         '<datalist id="pfBranchList">' + d.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
@@ -2551,12 +2551,21 @@
 
       h += '<div class="group-title">❓ 對不上 <span class="count-pill' + (d.unmatched.length ? ' red' : '') + '">' + d.unmatched.length + '</span></div>';
       h += d.unmatched.length ? d.unmatched.map(function (x, i) {
-        return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　' + money(x.total) + '</div>' +
-          '<div class="row-meta">' + x.lines.map(esc).join('、') + '</div>' +
+        return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　<b>' + esc(x.staff) + '</b> 的品項 ' + money(x.total) + '</div>' +
+          '<div class="row-meta">' + x.lines.map(esc).join('、') + '<br>請選「' + esc(x.staff) + '」那一張、金額相符的收費單</div>' +
           (x.options.length ? '<select id="spPick' + i + '"><option value="">選擇當天的收費單</option>' + x.options.map(function (o) {
             return '<option value="' + esc(o.receipt) + '">' + esc(o.text) + '</option>'; }).join('') + '</select>' : '<div class="hint">當天這家店沒有任何收費單，可能櫃台日報還沒匯入。</div>') +
           '<div class="jump-links">' + (x.options.length ? '<button class="mini-btn" data-i="' + i + '" onclick="spPair(this.dataset.i)">配對</button>' : '') +
           '<button class="mini-btn grey" data-i="' + i + '" onclick="spAct({type:\'skip\', keys: spData.unmatched[this.dataset.i].keys})">略過</button></div></div>';
+      }).join('') : '<div class="empty">沒有。</div>';
+
+      h += '<div class="group-title">🔗 已手動配對（配錯可以取消） <span class="count-pill">' + (d.manual || []).length + '</span></div>';
+      h += (d.manual || []).length ? d.manual.map(function (x, i) {
+        const over = Math.round(x.total) > Math.round(Math.abs(x.desk)) + 1;
+        return '<div class="row-item' + (over ? ' pace-red' : '') + '"' + (over ? ' style="border-radius:12px; padding:10px;"' : '') + '><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　→ 單號 ' + esc(x.receipt) + '</div>' +
+          '<div class="row-meta">' + esc(x.staff) + ' 的品項 ' + money(x.total) + '／這張單 ' + money(x.desk) + '（' + esc(x.deskStaff) + '）' +
+          (over ? '<br><b>⚠️ 品項金額超過這張單，業績可能重複，建議取消</b>' : '') + '</div>' +
+          '<div class="jump-links"><button class="mini-btn grey" data-i="' + i + '" onclick="if(confirm(\'取消這組配對？品項會回到「對不上」。\')) spAct({type:\'unpair\', keys: spData.manual[this.dataset.i].keys, receipt: spData.manual[this.dataset.i].receipt})">取消配對</button></div></div>';
       }).join('') : '<div class="empty">沒有。</div>';
 
       h += '<div class="group-title">👥 拆給多人：成交人次給誰 <span class="count-pill' + (d.owners.length ? ' red' : '') + '">' + d.owners.length + '</span></div>';
@@ -3085,7 +3094,7 @@
         '<div class="big">' + money(s.s) + '</div>' +
         (t.total ? '<div class="progress"><div style="width:' + Math.min(pctOf_(s.s, t.total), 100) + '%"></div></div>' +
           '<div class="hint">' + esc(d.scopeLabel) + '目標 <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
-          (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + ' 天' : '') : '') + '</div>'
+          (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + (d.scope ? ' 個工作天' : ' 天') : '') : '') + '</div>'
           : '<div class="hint">尚未設定本月目標</div>') +
         '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth +
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
@@ -3242,7 +3251,7 @@
         targetHtml = '<div class="progress"><div style="width:' + Math.min(t.pct, 100) + '%"></div></div>' +
           '<div class="hint">目標 <b>' + money(t.amount) + '</b>，已達成 <b>' + t.pct + '%</b></div>' +
           (t.remaining > 0
-            ? '<div class="hint">還差 <b>' + money(t.remaining) + '</b>，剩 ' + d.daysLeft + ' 天，平均每天要做 <b>' + money(t.dailyNeeded) + '</b></div>'
+            ? '<div class="hint">還差 <b>' + money(t.remaining) + '</b>，剩 <b>' + d.daysLeft + '</b> 個工作天，平均每個工作天要做 <b>' + money(t.dailyNeeded) + '</b></div>'
             : '<div class="hint good">🎉 本月目標已達成，超出 ' + money(k.month.s - t.amount) + '</div>');
       } else {
         targetHtml = '<div class="hint">本月還沒設定目標，請主管在「諮詢師設定」分頁填寫。</div>';
@@ -3963,4 +3972,3 @@
   </script>
 </body>
 </html>
-
