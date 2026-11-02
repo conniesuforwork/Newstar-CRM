@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v37.2（付款三層標題／新舊客以櫃台日報為起點／同單號分業績）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38（營業報表多分頁／新客來源表／美容部 RFM／診所目標）</div>
   </div>
 
   <script>
@@ -833,7 +833,7 @@
     // ===================== 登入與呼叫伺服器 =====================
     // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
     // 放在 Apps Script 時：保持空白即可
-    const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
+    const CRM_API_URL = '';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
     function serverRun_(fn, args, ok, fail) {
@@ -1694,6 +1694,8 @@
     let adminData = null;
     let adminTempNotice = null;
     let paramBranch = '';          // RFM 參數正在編輯哪家診所（空白＝集團預設）
+    let paramDept = '';            // ''＝全部顧客；'美容部'＝負責人是美容部的顧客
+    function paramScope_() { return paramDept ? (paramBranch || '全集團') + '・美容部' : paramBranch; }
 
     function loadAdmin() {
       const body = document.getElementById('adminBody');
@@ -1746,10 +1748,18 @@
       html += '<div class="card visible"><div class="section-title">📥　匯入財務拆帳表（品項與業績拆分）</div>' +
         '<div class="hint" style="margin-top:0;">各店分開匯入。用「同一天＋同一位顧客」對到櫃台日報的單，依每個品項的諮詢師拆分業績。' +
         '檔案日期範圍內的舊資料會整批取代，可以重複匯入。</div>' +
-        '<div class="row-2"><div><label>這份是哪一家</label><select id="fiBranch">' +
-          d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
-        '<div><label>選擇檔案</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)"></div></div>' +
+        '<label>選擇檔案（營業報表）</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)">' +
+        '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
+
+      // 匯入新客來源明細表
+      html += '<div class="card visible"><div class="section-title">📥　匯入新客來源明細表（新客數）</div>' +
+        '<div class="hint" style="margin-top:0;">只用來算「有消費新客數」（是否成交＝成交，同一人只算一次），個人依「服務人員」。<b>不讀任何金額</b>。' +
+        '成交新客會自動建檔（負責人＝服務人員），也會補上櫃台日報沒有手機的顧客。同一家店、同一個月重新匯入會整批取代。</div>' +
+        '<div class="row-2"><div><label>這份是哪一家</label><select id="nsBranch">' +
+          d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label>選擇檔案</label><input type="file" id="nsFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readNewSrcFile(this)"></div></div>' +
+        '<div id="nsPreview"></div></div>';
 
       // 拆帳待處理
       html += '<div class="card visible"><div class="section-title">🧩　拆帳待處理</div>' +
@@ -1866,28 +1876,34 @@
 
       // 系統參數（先選診所）
       const bp = d.branchParams || {};
-      const pbOptions = [''].concat(d.branches.concat(Object.keys(bp)).filter(function (x, i, arr) { return x && arr.indexOf(x) === i; }).sort());
-      const isBranch = !!paramBranch;
+      const pbOptions = [''].concat(d.branches.concat(Object.keys(bp)).filter(function (x, i, arr) { return x && x.indexOf('・美容部') === -1 && arr.indexOf(x) === i; }).sort());
+      const scopeKey = paramScope_();
+      const isBranch = !!scopeKey;
       html += '<div class="card visible"><div class="section-title">🧮　RFM 與系統參數</div>' +
         '<label style="margin-top:0;">選擇診所</label>' +
+        '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">部門</label><select onchange="paramDept=this.value; renderAdmin();">' +
+          '<option value=""' + (!paramDept ? ' selected' : '') + '>全部顧客</option>' +
+          '<option value="美容部"' + (paramDept ? ' selected' : '') + '>美容部的顧客' + (Object.keys(bp).some(function (k) { return k.indexOf('・美容部') !== -1; }) ? '（已自訂）' : '') + '</option></select></div><div></div></div>' +
         '<div class="row-2" style="align-items:end;"><select id="pbSel" onchange="paramBranch=this.value; renderAdmin();">' +
           pbOptions.map(function (b) {
             return '<option value="' + esc(b) + '"' + (b === paramBranch ? ' selected' : '') + '>' + (b ? esc(b) + (bp[b] ? '（已自訂）' : '') : '集團預設') + '</option>';
           }).join('') + '</select>' +
           '<div><input type="text" id="pbNew" placeholder="新診所，例如：新竹診所"></div></div>' +
         '<button type="button" class="link-btn" onclick="addParamBranch()">＋ 設定新診所</button>' +
-        '<div class="hint">' + (isBranch
+        '<div class="hint">' + (paramDept
+          ? '只影響<b>負責人是美容部</b>、' + (paramBranch ? '所屬診所＝' + esc(paramBranch) : '所有診所') + '的顧客。欄位<b>留空＝沿用上一層</b>（' + (paramBranch ? esc(paramBranch) + '的設定，再來是集團預設' : '集團預設') + '）。'
+          : isBranch
           ? '只影響「所屬診所＝' + esc(paramBranch) + '」的顧客。欄位<b>留空＝沿用集團預設</b>（灰字）。年消費前幾 % 也只跟同診所的顧客比。'
           : '所有診所的基本門檻。各診所沒有另外設定的項目，都用這裡的數字。') + '</div>' +
         d.params.filter(function (p) { return !isBranch || p.scope === 'rfm'; }).map(function (p) {
-          const own = isBranch && bp[paramBranch] && bp[paramBranch][p.key] !== undefined ? bp[paramBranch][p.key] : '';
+          const own = isBranch && bp[scopeKey] && bp[scopeKey][p.key] !== undefined ? bp[scopeKey][p.key] : '';
           return '<label>' + esc(p.label) + '</label>' +
             '<input type="number" inputmode="numeric" class="ad-param" data-key="' + esc(p.key) + '" value="' + esc(isBranch ? own : p.value) + '"' +
             (isBranch ? ' placeholder="集團預設 ' + Number(p.value).toLocaleString('en-US') + '"' : '') + '>';
         }).join('') +
         (isBranch ? '' : '<div class="hint">「沉睡天數」和「POS 提醒天數」全集團共用，不分診所。</div>') +
         '<button type="button" class="primary-btn" id="adParamBtn" style="margin-top:16px; box-shadow:none;" onclick="saveParamsUI()"><span>儲存' +
-          (isBranch ? '「' + esc(paramBranch) + '」' : '集團預設') + '並重算等級</span></button>' +
+          (isBranch ? '「' + esc(scopeKey) + '」' : '集團預設') + '並重算等級</span></button>' +
         '<div class="hint">儲存後會立刻用新門檻重算顧客的 R、F、M 與等級。</div></div>';
 
       // 操作紀錄
@@ -2279,6 +2295,36 @@
     // ---------- 管理員：匯入財務拆帳表 ----------
     let fiParsed = null;
 
+    // Excel 日期（序號、Date、「2026/10/1」「10/1/26」「115/10/1」）→ yyyy-MM-dd
+    function cellDay_(v) {
+      const pad = function (n) { return String(n).padStart(2, '0'); };
+      if (v === null || v === undefined || v === '') return '';
+      if (typeof v === 'number' && v > 20000 && v < 80000) {
+        const d = XLSX.SSF.parse_date_code(v);
+        return d ? d.y + '-' + pad(d.m) + '-' + pad(d.d) : '';
+      }
+      if (v instanceof Date) return v.getFullYear() + '-' + pad(v.getMonth() + 1) + '-' + pad(v.getDate());
+      const s = String(v).trim();
+      let m = s.match(/^(\d{3,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+      if (m) { const y = Number(m[1]) < 1911 ? Number(m[1]) + 1911 : Number(m[1]); return y + '-' + pad(m[2]) + '-' + pad(m[3]); }
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);                       // 10/1/26（月/日/年）
+      if (m) return (2000 + Number(m[3])) + '-' + pad(m[1]) + '-' + pad(m[2]);
+      return '';
+    }
+
+    // 分頁名稱 → 診所（「10月(長安)」→ 長安診所）；不在診所清單的（例如已結束的忠孝）回傳空白
+    function clinicFromTab_(tab) {
+      const list = (adminData && adminData.clinics) || [];
+      for (let i = 0; i < list.length; i++) {
+        const short = list[i].replace(/診所$/, '');
+        if (tab.indexOf(short) !== -1) return list[i];
+      }
+      return '';
+    }
+
+    // ---------- 管理員：匯入財務拆帳表（營業報表） ----------
+    let fiSheets = [], fiFileName = '';
+
     function readFinanceFile(input) {
       const file = input.files && input.files[0];
       if (!file) return;
@@ -2289,17 +2335,17 @@
         reader.onload = function (e) {
           try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-            const rows = [];
-            const pad = function (n) { return String(n).padStart(2, '0'); };
             const norm = function (x) { return String(x).replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')'); };
+            fiSheets = [];
             wb.SheetNames.forEach(function (tab) {
-              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              // raw:true：日期拿到 Excel 的真實數值，不受顯示格式影響
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: true, defval: '' });
               let hi = -1;
               for (let i = 0; i < Math.min(aoa.length, 10); i++) {
                 const line = aoa[i].map(norm);
                 if (line.some(function (x) { return x.indexOf('付款日期') === 0; }) && line.some(function (x) { return x.indexOf('收款金額') === 0; })) { hi = i; break; }
               }
-              if (hi < 0) return;
+              if (hi < 0) return;                                    // 總表、直播營收等分頁自動略過
               const h = aoa[hi].map(norm);
               const col = function () {
                 for (let a = 0; a < arguments.length; a++) {
@@ -2311,60 +2357,174 @@
               };
               const c = { date: col('付款日期'), name: col('顧客'), staff: col('諮詢師', '銷售人員'), big: col('項目(大)'), mid: col('項目(中)'),
                 small: col('項目(小)'), amount: col('收款金額'), pay: col('付款'), note: col('備註') };
+              const rows = [];
               for (let i = hi + 1; i < aoa.length; i++) {
                 const r = aoa[i];
                 const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
-                const m = g('date').match(/(\d{3,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-                if (!m || !g('name')) continue;
-                const yy = Number(m[1]) < 1911 ? Number(m[1]) + 1911 : Number(m[1]);
-                rows.push({ date: yy + '-' + pad(m[2]) + '-' + pad(m[3]), name: g('name'), staffRaw: g('staff'), big: g('big'), mid: g('mid'),
-                  small: g('small'), amount: g('amount').replace(/[^\d.\-]/g, ''), pay: g('pay'), note: g('note') });
+                const dk = cellDay_(c.date >= 0 ? r[c.date] : '');
+                if (!dk || !g('name')) continue;
+                rows.push({ date: dk, name: g('name'), staffRaw: g('staff'), big: g('big'), mid: g('mid'), small: g('small'),
+                  amount: g('amount').replace(/[^\d.\-]/g, ''), pay: g('pay'), note: g('note') });
               }
+              if (rows.length) fiSheets.push({ tab: tab, branch: clinicFromTab_(tab), rows: rows });
             });
-            if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「付款日期」「顧客」「收款金額」欄。</div>'; return; }
-            fiParsed = { rows: rows, fileName: file.name };
-            box.innerHTML = '<div class="empty">已讀到 ' + rows.length + ' 列，正在配對...</div>';
-            api().withSuccessHandler(function (s) { renderFiPreview_(s, false); })
-              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-              .importFinance(fiReq_(true));
+            fiFileName = file.name;
+            if (!fiSheets.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「付款日期」「顧客」「收款金額」欄。</div>'; return; }
+            renderFiPicker_();
           } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
         };
         reader.readAsArrayBuffer(file);
       });
     }
 
-    function fiReq_(dryRun) {
-      return { branch: document.getElementById('fiBranch').value, fileName: fiParsed.fileName, rows: fiParsed.rows, dryRun: dryRun };
+    // 列出分頁讓管理員勾選；預設勾選「最近一個月」且認得診所的分頁
+    function renderFiPicker_() {
+      const months = fiSheets.map(function (s) { return s.rows[0].date.slice(0, 7); }).sort();
+      const latest = months[months.length - 1];
+      document.getElementById('fiPreview').innerHTML = '<div class="sub-panel"><b>讀到 ' + fiSheets.length + ' 個分頁，請勾選要匯入的：</b>' +
+        fiSheets.map(function (s, i) {
+          const m = s.rows[0].date.slice(0, 7);
+          return '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:6px;">' +
+            '<input type="checkbox" id="fiPick' + i + '" style="width:18px; height:18px;"' + (s.branch && m === latest ? ' checked' : '') + (s.branch ? '' : ' disabled') + '>' +
+            esc(s.tab) + '　' + s.rows.length + ' 列　→ ' + (s.branch ? '<b>' + esc(s.branch) + '</b>' : '<span style="color:var(--text-muted);">不在診所清單（例如已結束營業），略過</span>') + '</label>';
+        }).join('') +
+        '<div class="hint">同一家診所、同一段日期的舊資料會整批取代，重複匯入不會重複。</div>' +
+        '<button type="button" class="primary-btn" id="fiBtn1" style="margin-top:12px; box-shadow:none;" onclick="runFinance_(true)"><span>預覽勾選的分頁</span></button>' +
+        '<div id="fiResult"></div></div>';
     }
 
-    function renderFiPreview_(s, done) {
-      const box = document.getElementById('fiPreview');
+    // 逐一處理勾選的分頁（每個分頁用它自己的診所）
+    function runFinance_(dryRun) {
+      const picked = fiSheets.filter(function (s, i) { const el = document.getElementById('fiPick' + i); return el && el.checked; });
+      if (!picked.length) { showToast('請至少勾選一個分頁'); return; }
+      const out = document.getElementById('fiResult');
+      const btn = document.getElementById(dryRun ? 'fiBtn1' : 'fiBtn2');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span>處理中...</span>'; }
+      const results = [];
+      const next = function (i) {
+        if (i >= picked.length) {
+          out.innerHTML = results.map(function (r) { return '<div style="margin-top:10px;"><b>' + esc(r.tab) + '（' + esc(r.branch) + '）</b>' + finSummaryHtml_(r.s, !dryRun) + '</div>'; }).join('') +
+            (dryRun && !results.some(function (r) { return r.s.blocked; })
+              ? '<button type="button" class="primary-btn" id="fiBtn2" style="margin-top:14px; box-shadow:none;" onclick="runFinance_(false)"><span>確認匯入這 ' + picked.length + ' 個分頁</span></button>' : '');
+          if (btn) { btn.disabled = false; btn.innerHTML = '<span>' + (dryRun ? '預覽勾選的分頁' : '確認匯入') + '</span>'; }
+          if (!dryRun) { perfStale = true; showToast('營業報表匯入完成'); }
+          return;
+        }
+        const s = picked[i];
+        out.innerHTML = '<div class="empty">處理中：' + esc(s.tab) + '（' + (i + 1) + ' / ' + picked.length + '）...</div>';
+        api().withSuccessHandler(function (r) { results.push({ tab: s.tab, branch: s.branch, s: r }); next(i + 1); })
+          .withFailureHandler(function (err) { results.push({ tab: s.tab, branch: s.branch, s: { error: err.message } }); next(i + 1); })
+          .importFinance({ branch: s.branch, fileName: fiFileName + '／' + s.tab, rows: s.rows, dryRun: dryRun });
+      };
+      next(0);
+    }
+
+    function finSummaryHtml_(s, done) {
+      if (s.error) return '<div class="empty">' + esc(s.error) + '</div>';
       const list = function (title, arr, red) {
         if (!arr || !arr.length) return '';
         return '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
-          '<div class="row-meta">' + arr.slice(0, 40).map(esc).join('<br>') + (arr.length > 40 ? '<br>…' : '') + '</div>';
+          '<div class="row-meta">' + arr.slice(0, 30).map(esc).join('<br>') + (arr.length > 30 ? '<br>…' : '') + '</div>';
       };
-      if (s.blocked) {
-        box.innerHTML = '<div class="sub-panel">' + list('⛔ 這些諮詢師對不到任何人，請先到「人員管理」補別名', s.unresolved, true) + '</div>';
-        return;
-      }
-      box.innerHTML = '<div class="sub-panel">' + (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
-        '<div class="row-meta" style="margin-top:6px;">' + esc(s.range) + '　共 <b>' + s.lines + '</b> 列' +
-        (s.replaced ? '（會取代這段期間原本的 ' + s.replaced + ' 列）' : '') +
-        '<br>自動拆帳 <b>' + s.ok + '</b> 張單' + (s.manual ? '、沿用手動配對 ' + s.manual + ' 組' : '') + '</div>' +
-        list('🟡 金額不同（先不拆，請到「拆帳待處理」確認）', s.mismatch, true) +
-        list('❓ 對不上（請到「拆帳待處理」手動配對）', s.unmatched, true) +
-        (done ? '' : '<button type="button" class="primary-btn" id="fiBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFinance()"><span>確認匯入</span></button>') + '</div>';
+      if (s.blocked) return list('⛔ 這些諮詢師對不到任何人，請先到「人員管理」補別名', s.unresolved, true);
+      return '<div class="row-meta">' + (done ? '✅ 已匯入　' : '') + esc(s.range) + '　共 <b>' + s.lines + '</b> 列' +
+        (s.replaced ? '（取代原本 ' + s.replaced + ' 列）' : '') + '<br>自動拆帳 <b>' + s.ok + '</b> 張單' + (s.manual ? '、沿用手動配對 ' + s.manual + ' 組' : '') + '</div>' +
+        list('🟡 金額跟櫃台日報不同（已照營業報表拆，可到「拆帳待處理」改回）', s.mismatch, true) +
+        list('❓ 對不上櫃台日報的單（請到「拆帳待處理」手動配對）', s.unmatched, true);
     }
 
-    function submitFinance() {
-      if (!fiParsed) return;
-      const btn = document.getElementById('fiBtn2');
+    // ---------- 管理員：匯入新客來源明細表 ----------
+    let nsMonths = [], nsFileName = '';
+
+    function readNewSrcFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('nsPreview');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const norm = function (x) { return String(x).replace(/\s+/g, ''); };
+            const pad = function (n) { return String(n).padStart(2, '0'); };
+            nsMonths = [];
+            wb.SheetNames.forEach(function (tab) {
+              const tm = tab.match(/(\d{2,4})\s*年\s*(\d{1,2})\s*月/);
+              if (!tm) return;
+              const y = Number(tm[1]) < 1911 ? Number(tm[1]) + 1911 : Number(tm[1]);
+              const month = y + '-' + pad(tm[2]);
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: true, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+                const line = aoa[i].map(norm);
+                if (line.indexOf('是否成交') !== -1 && line.indexOf('客戶姓名') !== -1) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              const h = aoa[hi].map(norm);
+              const c = { date: h.indexOf('日期'), chart: h.indexOf('病例編號'), name: h.indexOf('客戶姓名'), bday: h.indexOf('生日'), phone: h.indexOf('電話'),
+                staff: h.indexOf('服務人員'), source: h.indexOf('來源'), item: h.indexOf('諮詢項目'), deal: h.indexOf('是否成交') };
+              const rows = [];
+              for (let i = hi + 1; i < aoa.length; i++) {
+                const r = aoa[i];
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                if (!g('name')) continue;
+                let ph = g('phone').replace(/\D/g, '');
+                if (/^9\d{8}$/.test(ph)) ph = '0' + ph;                       // Excel 吃掉開頭的 0
+                const bd = c.bday >= 0 && typeof r[c.bday] === 'number' ? cellDay_(r[c.bday]) : g('bday');
+                rows.push({ date: cellDay_(c.date >= 0 ? r[c.date] : ''), chart: g('chart'), name: g('name'), birthday: bd, phone: ph,
+                  staffRaw: g('staff'), source: g('source'), item: g('item'), deal: g('deal') });
+              }
+              if (rows.length) nsMonths.push({ tab: tab, month: month, rows: rows, deals: rows.filter(function (x) { return x.deal === '成交'; }).length });
+            });
+            nsFileName = file.name;
+            if (!nsMonths.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認分頁名稱像「115年10月」，而且有「客戶姓名」「是否成交」欄。</div>'; return; }
+            nsMonths.sort(function (a, b) { return a.month < b.month ? -1 : 1; });
+            const latest = nsMonths[nsMonths.length - 1].month;
+            box.innerHTML = '<div class="sub-panel"><b>讀到 ' + nsMonths.length + ' 個月份，請勾選要匯入的：</b>' +
+              nsMonths.map(function (m, i) {
+                return '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:6px;">' +
+                  '<input type="checkbox" id="nsPick' + i + '" style="width:18px; height:18px;"' + (m.month === latest ? ' checked' : '') + '>' +
+                  esc(m.tab) + '　' + m.rows.length + ' 位諮詢、成交 ' + m.deals + ' 筆</label>';
+              }).join('') +
+              '<button type="button" class="primary-btn" id="nsBtn1" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(true)"><span>預覽</span></button><div id="nsResult"></div></div>';
+          } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function runNewSrc_(dryRun) {
+      const picked = nsMonths.filter(function (m, i) { const el = document.getElementById('nsPick' + i); return el && el.checked; });
+      if (!picked.length) { showToast('請至少勾選一個月份'); return; }
+      const btn = document.getElementById(dryRun ? 'nsBtn1' : 'nsBtn2');
       btn.disabled = true;
-      btn.innerHTML = '<span>匯入中...</span>';
-      api().withSuccessHandler(function (s) { renderFiPreview_(s, true); fiParsed = null; document.getElementById('fiFile').value = ''; perfStale = true; showToast('財務拆帳表匯入完成'); })
-        .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
-        .importFinance(fiReq_(false));
+      btn.innerHTML = '<span>處理中...</span>';
+      const out = document.getElementById('nsResult');
+      api().withSuccessHandler(function (s) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>' + (dryRun ? '預覽' : '確認匯入') + '</span>';
+        out.innerHTML = '<div class="row-meta" style="margin-top:8px;">' + (s.done ? '✅ 已匯入<br>' : '') +
+          s.months.map(function (m) {
+            const ck = m.check || {};
+            const li = function (title, arr, red) {
+              return arr && arr.length ? '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
+                '<div class="row-meta">' + arr.slice(0, 40).map(esc).join('<br>') + '</div>' : '';
+            };
+            return '<b>' + esc(m.month) + '：有消費新客 ' + m.deals + ' 位</b>（' + m.rows + ' 位諮詢）' +
+              li('⚠️ 櫃台有付訂金／一次付清，但來源表標「未成交」（請修正來源表）', ck.notDeal, true) +
+              li('⚠️ 櫃台有付訂金／一次付清，但來源表找不到這位（請補進來源表）', ck.missing, true) +
+              li('ℹ️ 之前月份已算過新客，這個月不重複算（正確）', ck.earlier) +
+              li('ℹ️ 來源表成交，但櫃台日報這個月沒有新客訂金／一次付清', ck.srcOnly);
+          }).join('<br>') +
+          '<br>顧客主資料沒有、會自動建檔的成交新客：<b>' + s.toCreate + '</b> 位</div>' +
+          (s.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到任何人（不影響全店新客數，補別名後個人新客數會自動算進去） <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
+            '<div class="row-meta">' + s.unresolved.map(esc).join('、') + '</div>' : '') +
+          (dryRun ? '<button type="button" class="primary-btn" id="nsBtn2" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(false)"><span>確認匯入</span></button>' : '');
+        if (!dryRun) { perfStale = true; showToast('新客來源明細表匯入完成'); }
+      }).withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>' + (dryRun ? '預覽' : '確認匯入') + '</span>'; showToast(err.message); })
+        .importNewCustSource({ branch: document.getElementById('nsBranch').value, fileName: nsFileName, dryRun: dryRun,
+          months: picked.map(function (m) { return { month: m.month, rows: m.rows }; }) });
     }
 
     // ---------- 管理員：拆帳待處理 ----------
@@ -2381,12 +2541,12 @@
     function renderSplitIssues_() {
       const d = spData;
       let h = '';
-      h += '<div class="group-title">🟡 金額不同 <span class="count-pill' + (d.mismatch.length ? ' red' : '') + '">' + d.mismatch.length + '</span></div>';
+      h += '<div class="group-title">🟡 營業報表跟櫃台日報金額不同（已照營業報表拆） <span class="count-pill' + (d.mismatch.length ? ' red' : '') + '">' + d.mismatch.length + '</span></div>';
       h += d.mismatch.length ? d.mismatch.map(function (x, i) {
         return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　單號 ' + esc(x.receipt) + '</div>' +
           '<div class="row-meta">櫃台 ' + money(x.desk) + '（' + esc(x.deskStaff) + '）／財務 ' + money(x.fin) + '<br>' + x.lines.map(esc).join('、') + '</div>' +
-          '<div class="jump-links"><button class="mini-btn" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'照財務\'})">照財務拆</button>' +
-          '<button class="mini-btn grey" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'不拆\'})">不拆（維持櫃台）</button></div></div>';
+          '<div class="jump-links"><button class="mini-btn" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'照財務\'})">確認（照營業報表）</button>' +
+          '<button class="mini-btn grey" data-i="' + i + '" onclick="spAct({type:\'confirm\', receipt: spData.mismatch[this.dataset.i].receipt, value:\'不拆\'})">改回櫃台日報</button></div></div>';
       }).join('') : '<div class="empty">沒有。</div>';
 
       h += '<div class="group-title">❓ 對不上 <span class="count-pill' + (d.unmatched.length ? ' red' : '') + '">' + d.unmatched.length + '</span></div>';
@@ -2864,7 +3024,7 @@
           perfStale = true;
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存參數並重算等級</span>'; showToast(err.message); })
-        .saveParams(values, paramBranch);
+        .saveParams(values, paramScope_());
     }
 
     // 目前畫面是哪一家店（集團總覽或個人畫面＝空白）
@@ -2931,7 +3091,8 @@
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>新客 ' + s.nc + ' 位・成交 ' + s.nd + ' 人次') +
+        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 人次' +
+          '<br>本月新客 ' + money(s.nsNew || 0) + '・前期延續 ' + money(s.ns - (s.nsNew || 0))) +
         kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 人次') +
         kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
         kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
@@ -3003,7 +3164,7 @@
         html += '<div class="card visible"><div class="section-title">🏥　各診所</div>' + d.branches.map(function (b) {
           return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(b.name) + '</span><span class="amount">' + money(b.s) + '</span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.max(b.s, 0) / bmax * 100 + '%"></div></div>' +
-            '<div class="row-meta">新客 ' + money(b.ns) + '（' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次<br>' +
+            '<div class="row-meta">新客 ' + money(b.ns) + '（有消費新客 ' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次<br>' +
             (b.lights ? ltBadge_(b.lights.total, '總') + ltBadge_(b.lights.newC, '新客') + ltBadge_(b.lights.oldC, '舊客') + '<br>' : '') +
             '現金 ' + money(b.cash) + '（佔 ' + ratioPct_(b.cashRatio) + '）' +
             (b.splitStat && b.splitStat.total ? '　財務拆帳 ' + b.splitStat.done + '/' + b.splitStat.total : '') + '</div></div>';
@@ -3045,8 +3206,10 @@
         }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
 
       html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
+      html += '<div class="card visible" id="clinicTargetCard"><div class="section-title">🏥　診所業績目標</div><div class="empty">載入中...</div></div>';
       html += targetCardHtml();
       document.getElementById('perfBody').innerHTML = html;
+      loadClinicTargets_(d.monthKey);
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
@@ -3096,7 +3259,8 @@
       // --- 新客／舊客 ---
       const no = d.newOld;
       html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
-        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '本月新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次（收到尾款或全額才算結案）' +
+        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '有消費新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次' +
+          '<br>其中本月新客 ' + money(no.newSalesNew || 0) + '・前期新客延續 ' + money(no.newSales - (no.newSalesNew || 0)) +
           (d.pace ? paceText_(d.pace.newC, '新客') : '')) +
         noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 人次' +
           (d.pace ? paceText_(d.pace.oldC, '舊客') : '')) +
@@ -3316,6 +3480,32 @@
     }
 
     // ---------- 主管：設定業績目標 ----------
+    // 診所目標：每家店每月一個總業績目標（店的燈號、達成率都用它）
+    function loadClinicTargets_(month) {
+      api().withSuccessHandler(function (r) {
+        const scope = currentScope_();
+        const list = scope ? [scope] : r.clinics;
+        document.getElementById('clinicTargetCard').innerHTML = '<div class="section-title">🏥　診所業績目標</div>' +
+          '<div class="hint" style="margin-top:0;">只設總業績，不分新舊客。有設定時，店的進度燈號和達成率都用這個目標；沒設定就用人員個人目標加總。</div>' +
+          '<label>月份</label><input type="month" id="ctMonth" value="' + esc(r.month) + '" onchange="loadClinicTargets_(this.value)">' +
+          list.map(function (b, i) {
+            return '<label>' + esc(b) + '</label><input type="number" inputmode="numeric" class="ct-in" data-b="' + esc(b) + '" value="' + (r.targets[b] || '') + '" placeholder="例如 15000000">';
+          }).join('') +
+          '<button type="button" class="primary-btn" id="ctBtn" style="margin-top:14px; box-shadow:none;" onclick="saveClinicTargetsUI()"><span>儲存診所目標</span></button>';
+      }).withFailureHandler(function (err) { document.getElementById('clinicTargetCard').innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getClinicTargets(month);
+    }
+
+    function saveClinicTargetsUI() {
+      const map = {};
+      document.querySelectorAll('.ct-in').forEach(function (el) { map[el.dataset.b] = el.value.trim(); });
+      const btn = document.getElementById('ctBtn');
+      btn.disabled = true;
+      api().withSuccessHandler(function () { btn.disabled = false; showToast('診所目標已儲存'); perfStale = true; loadPerf(); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .saveClinicTargets(document.getElementById('ctMonth').value, map);
+    }
+
     function targetCardHtml() {
       const m = localDateStr().slice(0, 7);
       return '<div class="card visible" id="targetCard"><div class="section-title">🎯　設定業績目標' + (currentScope_() ? '（' + esc(currentScope_()) + '）' : perfUser.group ? '（全集團）' : '（' + esc(perfUser.branch) + '）') + '</div>' +
