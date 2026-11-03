@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38.1（實際工作天／拆帳自動配對與取消配對／離職免 Email）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38.2（金額以櫃台日報為準／成交筆數／對帳）</div>
   </div>
 
   <script>
@@ -2475,7 +2475,7 @@
                 rows.push({ date: cellDay_(c.date >= 0 ? r[c.date] : ''), chart: g('chart'), name: g('name'), birthday: bd, phone: ph,
                   staffRaw: g('staff'), source: g('source'), item: g('item'), deal: g('deal') });
               }
-              if (rows.length) nsMonths.push({ tab: tab, month: month, rows: rows, deals: rows.filter(function (x) { return x.deal === '成交'; }).length });
+              if (rows.length) nsMonths.push({ tab: tab, month: month, rows: rows, deals: rows.filter(function (x) { return /成交/.test(x.deal) && !/未成交/.test(x.deal); }).length });
             });
             nsFileName = file.name;
             if (!nsMonths.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認分頁名稱像「115年10月」，而且有「客戶姓名」「是否成交」欄。</div>'; return; }
@@ -2568,7 +2568,7 @@
           '<div class="jump-links"><button class="mini-btn grey" data-i="' + i + '" onclick="if(confirm(\'取消這組配對？品項會回到「對不上」。\')) spAct({type:\'unpair\', keys: spData.manual[this.dataset.i].keys, receipt: spData.manual[this.dataset.i].receipt})">取消配對</button></div></div>';
       }).join('') : '<div class="empty">沒有。</div>';
 
-      h += '<div class="group-title">👥 拆給多人：成交人次給誰 <span class="count-pill' + (d.owners.length ? ' red' : '') + '">' + d.owners.length + '</span></div>';
+      h += '<div class="group-title">👥 拆給多人：成交筆數給誰 <span class="count-pill' + (d.owners.length ? ' red' : '') + '">' + d.owners.length + '</span></div>';
       h += d.owners.length ? d.owners.map(function (x, i) {
         return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　單號 ' + esc(x.receipt) + '</div>' +
           '<div class="row-meta">目前預設給金額最多的人（' + esc(x.people[0].name) + '）</div><div class="jump-links">' +
@@ -3100,10 +3100,10 @@
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 人次' +
+        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 筆' +
           '<br>本月新客 ' + money(s.nsNew || 0) + '・前期延續 ' + money(s.ns - (s.nsNew || 0))) +
-        kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 人次') +
-        kpiBox('成交人次', s.c + ' 人次', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
+        kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 筆') +
+        kpiBox('成交筆數', s.c + ' 筆', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
         kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
         '</div>' + repeatHtml_(s.rl, s.rc) +
         (d.splitStat && d.splitStat.total ? '<div class="hint">財務拆帳完成度：<b>' + d.splitStat.done + ' / ' + d.splitStat.total + '</b> 張單（' +
@@ -3118,6 +3118,13 @@
           (!sl.total && !sl.newC && !sl.oldC ? '<div class="empty">本月還沒設定這家店人員的目標。</div>' : '') +
           '<div class="hint">' + offText_(sl) + '（依' + esc(d.scope) + '公休規則）</div></div>';
       }
+
+      // 對帳
+      html += '<div class="card visible"><div class="section-title">🧮　對帳（系統業績 vs 櫃台日報）</div>' +
+        '<div class="hint" style="margin-top:0;">總額對不上時，按「開始對帳」，看是哪幾筆造成差額。</div>' +
+        (d.scope ? '' : '<label>診所</label><select id="rcBranch">' + (perfUser.branches || []).map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select>') +
+        '<button type="button" class="add-item-btn" data-m="' + esc(d.monthKey) + '" data-b="' + esc(d.scope || '') + '" onclick="loadReconcile_(this.dataset.m, this.dataset.b || document.getElementById(\'rcBranch\').value)">開始對帳</button>' +
+        '<div id="rcBox"></div></div>';
 
       // 付款結構
       html += payCardHtml_('💳　付款結構', d.pay, null);
@@ -3173,7 +3180,7 @@
         html += '<div class="card visible"><div class="section-title">🏥　各診所</div>' + d.branches.map(function (b) {
           return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(b.name) + '</span><span class="amount">' + money(b.s) + '</span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0;"><div style="width:' + Math.max(b.s, 0) / bmax * 100 + '%"></div></div>' +
-            '<div class="row-meta">新客 ' + money(b.ns) + '（有消費新客 ' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 人次<br>' +
+            '<div class="row-meta">新客 ' + money(b.ns) + '（有消費新客 ' + b.nc + ' 位）　舊客 ' + money(b.os) + '　成交 ' + b.c + ' 筆<br>' +
             (b.lights ? ltBadge_(b.lights.total, '總') + ltBadge_(b.lights.newC, '新客') + ltBadge_(b.lights.oldC, '舊客') + '<br>' : '') +
             '現金 ' + money(b.cash) + '（佔 ' + ratioPct_(b.cashRatio) + '）' +
             (b.splitStat && b.splitStat.total ? '　財務拆帳 ' + b.splitStat.done + '/' + b.splitStat.total : '') + '</div></div>';
@@ -3207,8 +3214,8 @@
             (p.lights ? '<div>' + ltBadge_(p.lights.total, '總') + ltBadge_(p.lights.newC, '新客') + ltBadge_(p.lights.oldC, '舊客') + '</div>' : '') +
             '<div class="row-meta">總目標 ' + (tg.total ? money(tg.total) + '・' + pctText_(p.s, tg.total) : '未設') + '<br>' +
             '新客 <b>' + money(p.ns) + '</b>（' + pctText_(p.ns, tg.newT) + '・' + p.nc + ' 位）<br>' +
-            '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '・' + p.oc + ' 位／' + p.od + ' 人次）<br>' +
-            '成交 ' + p.c + ' 人次' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') +
+            '舊客 <b>' + money(p.os) + '</b>（' + pctText_(p.os, tg.oldT) + '・' + p.oc + ' 位／' + p.od + ' 筆）<br>' +
+            '成交 ' + p.c + ' 筆' + (p.rc ? '・重複消費 ' + p.rc + ' 位' : '') + (p.sv ? '・服務 ' + p.sv + ' 人次' : '') + '　⭐ 評論 <b>' + p.rv + '</b>' + (tg.review ? ' / ' + tg.review + ' 則' : ' 則') +
             '<br>💳 現金 ' + money(p.cash || 0) + '（個人現金佔比 ' + ratioPct_(p.cashRatio) + '）' +
             (p.mainBranch ? '<br>🏆 佔' + esc(p.mainBranch) + '：業績 <b>' + ratioPct_(p.shareStore) + '</b>、現金 <b>' + ratioPct_(p.cashShareStore) + '</b>' : '') +
             (p.shareGroup !== undefined ? '　佔集團：業績 ' + ratioPct_(p.shareGroup) + '、現金 ' + ratioPct_(p.cashShareGroup) : '') + '</div></div>';
@@ -3254,7 +3261,7 @@
             ? '<div class="hint">還差 <b>' + money(t.remaining) + '</b>，剩 <b>' + d.daysLeft + '</b> 個工作天，平均每個工作天要做 <b>' + money(t.dailyNeeded) + '</b></div>'
             : '<div class="hint good">🎉 本月目標已達成，超出 ' + money(k.month.s - t.amount) + '</div>');
       } else {
-        targetHtml = '<div class="hint">本月還沒設定目標，請主管在「諮詢師設定」分頁填寫。</div>';
+        targetHtml = '<div class="hint">本月還沒設定目標，請主管在「我的業績 → 設定業績目標」填寫。</div>';
       }
       html += '<div class="card visible hero">' +
         '<div class="label">' + d.monthLabel + '累積業績</div>' +
@@ -3268,10 +3275,10 @@
       // --- 新客／舊客 ---
       const no = d.newOld;
       html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
-        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '有消費新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 人次' +
+        noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '有消費新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 筆' +
           '<br>其中本月新客 ' + money(no.newSalesNew || 0) + '・前期新客延續 ' + money(no.newSales - (no.newSalesNew || 0)) +
           (d.pace ? paceText_(d.pace.newC, '新客') : '')) +
-        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 人次' +
+        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 筆' +
           (d.pace ? paceText_(d.pace.oldC, '舊客') : '')) +
         repeatHtml_(no.repeat) + '</div>';
 
@@ -3280,9 +3287,9 @@
 
       // --- KPI ---
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('今日', money(k.today.s), k.today.c + ' 人次') +
-        kpiBox('本週（週一起）', money(k.week.s), k.week.c + ' 人次') +
-        kpiBox('本月成交', k.month.c + ' 人次', '服務（不收費）' + (d.serviceCount || 0) + ' 人次') +
+        kpiBox('今日', money(k.today.s), k.today.c + ' 筆成交') +
+        kpiBox('本週（週一起）', money(k.week.s), k.week.c + ' 筆成交') +
+        kpiBox('本月成交', k.month.c + ' 筆', '服務（不收費）' + (d.serviceCount || 0) + ' 人次') +
         kpiBox('本月平均客單', money(k.avgTicket), '上月全月 ' + money(k.lastMonth.s)) +
         '</div></div>';
 
@@ -3375,6 +3382,15 @@
       }
 
       if (!d.viewingOther) setPerfBadge_(0);
+      // 拆帳單：業績有分給我、成交筆數算給別人
+      if (d.dealElsewhere && d.dealElsewhere.length) {
+        html += '<div class="card visible"><div class="section-title">🧾　本月有 ' + d.dealElsewhere.length + ' 張拆帳單，成交筆數算給別人</div>' +
+          '<div class="hint" style="margin-top:0;">業績有分給你（已算進你的業績），但一張單只算 1 筆成交，給分到最多金額的人。</div>' +
+          d.dealElsewhere.map(function (x) {
+            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.customer) + '　單號 ' + esc(x.receipt) + '</span>' +
+              '<span class="row-meta">' + esc(x.date) + '</span></div><div class="row-meta">你分到 <b>' + money(x.mine) + '</b>，成交筆數算給 <b>' + esc(x.owner) + '</b>（' + money(x.ownerAmount) + '）</div></div>';
+          }).join('') + '</div>';
+      }
       // 我的業績異動（新的標「新」）
       html += changeCardHtml_('🔔　我的業績異動', d.changes, false);
 
@@ -3644,6 +3660,51 @@
     function ltBadge_(l, label) {
       if (!l || !l.level) return '';
       return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
+    }
+
+    // ---------- 對帳 ----------
+    let rcData = null;
+    function loadReconcile_(month, branch) {
+      const box = document.getElementById('rcBox');
+      box.innerHTML = '<div class="empty">對帳中...</div>';
+      api().withSuccessHandler(function (r) {
+        rcData = r;
+        const f = r.file;
+        const gap = f ? r.system - f.total : null;
+        let h = '<div class="sub-panel"><table style="width:100%; font-size:14px; border-collapse:collapse;">' +
+          '<tr><td>系統業績（畫面上的數字）</td><td style="text-align:right;"><b>' + money(r.system) + '</b></td></tr>' +
+          '<tr><td>　來自櫃台日報的單（' + r.deskCount + ' 筆）</td><td style="text-align:right;">' + money(r.fromDesk) + '</td></tr>' +
+          '<tr><td>　不是櫃台日報的單（' + r.others.length + ' 筆）</td><td style="text-align:right;">' + money(r.othersSum) + '</td></tr>' +
+          (f ? '<tr><td>櫃台日報檔案總額<br><span class="row-meta">' + esc(f.file) + '（' + esc(f.at) + ' 匯入）</span></td><td style="text-align:right;"><b>' + money(f.total) + '</b></td></tr>' +
+            (f.dup ? '<tr><td>　其中判定重複、只算一次的</td><td style="text-align:right;">' + money(f.dup) + '</td></tr>' : '') +
+            '<tr><td><b>差額</b></td><td style="text-align:right;"><b' + (Math.abs(gap) > 0 ? ' style="color:#9B3F2D;"' : '') + '>' + (gap > 0 ? '+' : '') + money(gap) + '</b></td></tr>'
+            : '<tr><td colspan="2" class="row-meta">還沒有這個月的櫃台日報匯入紀錄，重新匯入一次就會顯示檔案總額。</td></tr>') +
+          '</table>';
+        if (f && gap === 0) h += '<div class="done-text" style="margin-top:8px;">✅ 系統業績跟櫃台日報完全一致</div>';
+        if (r.others.length) {
+          h += '<div class="group-title">不是從櫃台日報來的單（造成差額最常見的原因）</div>' + r.others.map(function (t, i) {
+            return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(t.date) + '　' + esc(t.name) + '　' + money(t.amount) + '</span>' +
+              (perfUser.sysAdmin ? '<button class="mini-btn grey" data-i="' + i + '" onclick="voidRc_(this.dataset.i)">作廢這筆</button>' : '') + '</div>' +
+              '<div class="row-meta">單號 ' + esc(t.receipt || '（沒有）') + '　' + esc(t.payType) + '　負責 ' + esc(t.staff) + '　登錄 ' + esc(t.enteredBy || '－') + '　' + esc(t.recon || '') + '</div></div>';
+          }).join('') + '<div class="hint">常見原因：測試資料、人員輸入的單號打錯（櫃台日報的那筆另外又匯入一次）、櫃台漏記。單號打錯的也會出現在「系統管理 → 疑似重複」。</div>';
+        }
+        if (r.adminFixed.length) {
+          h += '<div class="group-title">管理員修正過金額或負責人的單</div>' + r.adminFixed.map(function (t) {
+            return '<div class="row-meta">' + esc(t.date) + '　' + esc(t.name) + '　' + money(t.amount) + '　單號 ' + esc(t.receipt) + '</div>';
+          }).join('');
+        }
+        box.innerHTML = h + '</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getReconcile({ month: month, branch: branch });
+    }
+
+    function voidRc_(i) {
+      const t = rcData.others[Number(i)];
+      const reason = prompt('作廢「' + t.date + ' ' + t.name + ' ' + money(t.amount) + '」的原因（例如：測試資料、單號打錯）', '');
+      if (reason === null) return;
+      api().withSuccessHandler(function () { showToast('已作廢'); perfStale = true; loadReconcile_(rcData.month, rcData.branch); })
+        .withFailureHandler(function (err) { showToast(err.message); })
+        .resolveDuplicate({ voids: [{ row: t.row, id: t.id }], reviews: [], reason: reason || '對帳時作廢' });
     }
 
     function setPerfBadge_(n) {
