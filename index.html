@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39（新客歸屬／自動改成交／行銷新客分析／加快載入）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.1（行銷新客分析：區間、比較、趨勢、匯出）</div>
   </div>
 
   <script>
@@ -3139,7 +3139,7 @@
       if (perfUser.group || perfUser.sysAdmin) {
         html += '<div class="card visible"><div class="section-title">📣　行銷新客分析</div>' +
           '<div class="hint" style="margin-top:0;">到診新客＝新客來源明細表的諮詢人數（含未成交）；成交含線上成交，以及同月櫃台有新客付款、自動改成成交的人。</div>' +
-          '<div id="mkBox" data-m="' + esc(d.monthKey) + '"><div class="empty">載入中...</div></div></div>';
+          '<div id="mkCtl"></div><div id="mkBox"><div class="empty">載入中...</div></div></div>';
       }
 
       // 對帳
@@ -3249,7 +3249,7 @@
       html += targetCardHtml();
       document.getElementById('perfBody').innerHTML = html;
       loadClinicTargets_(d.monthKey);
-      if (document.getElementById('mkBox')) loadMarketing_(d.monthKey);
+      if (document.getElementById('mkBox')) { renderMkCtl_(); loadMarketing_(); }
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
@@ -3686,34 +3686,177 @@
       return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
     }
 
-    // ---------- 行銷新客分析 ----------
-    let mkData = null, mkScope = '集團', mkDim = 'source';
-    function loadMarketing_(month) {
-      api().withSuccessHandler(function (r) { mkData = r; renderMarketing_(); })
-        .withFailureHandler(function (err) { const b = document.getElementById('mkBox'); if (b) b.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-        .getMarketingAnalysis({ month: month });
+    // ---------- 行銷新客分析（可選區間、比較、每月趨勢、匯出 Excel） ----------
+    let mkData = null;
+    const mk = { mode: 'month', preset: 'thisMonth', from: '', to: '', cmp: false, bPreset: 'yoy', bFrom: '', bTo: '',
+      scope: '集團', dim: 'source', trendCat: '' };
+    const MK_DIMS = [['source', '來源'], ['channel', '預約管道'], ['item', '諮詢項目']];
+    const pad2_ = function (n) { return String(n).padStart(2, '0'); };
+    function ymAdd_(ym, n) { const y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + n; const d = new Date(y, m, 1); return d.getFullYear() + '-' + pad2_(d.getMonth() + 1); }
+    function dayStr_(d) { return d.getFullYear() + '-' + pad2_(d.getMonth() + 1) + '-' + pad2_(d.getDate()); }
+    function dayAdd_(ds, n) { const d = new Date(ds.replace(/-/g, '/')); d.setDate(d.getDate() + n); return dayStr_(d); }
+    function daysBetween_(a, b) { return Math.round((new Date(b.replace(/-/g, '/')) - new Date(a.replace(/-/g, '/'))) / 86400000); }
+
+    // 快速選項 → 區間
+    function mkPreset_(preset, mode) {
+      const t = new Date(), ym = t.getFullYear() + '-' + pad2_(t.getMonth() + 1), y = t.getFullYear(), today = dayStr_(t);
+      const lastDay = function (m) { const d = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0); return dayStr_(d); };
+      if (mode === 'month') {
+        if (preset === 'thisMonth') return [ym, ym];
+        if (preset === 'lastMonth') return [ymAdd_(ym, -1), ymAdd_(ym, -1)];
+        if (preset === 'last3') return [ymAdd_(ym, -2), ym];
+        if (preset === 'thisYear') return [y + '-01', ym];
+        if (preset === 'lastYear') return [(y - 1) + '-01', (y - 1) + '-12'];
+      } else {
+        if (preset === 'thisMonth') return [ym + '-01', today];
+        if (preset === 'lastMonth') return [ymAdd_(ym, -1) + '-01', lastDay(ymAdd_(ym, -1))];
+        if (preset === 'last3') return [ymAdd_(ym, -2) + '-01', today];
+        if (preset === 'thisYear') return [y + '-01-01', today];
+        if (preset === 'lastYear') return [(y - 1) + '-01-01', (y - 1) + '-12-31'];
+      }
+      return [mk.from, mk.to];
     }
+    // 比較區間：去年同期，或緊接在前、同樣長度的區間
+    function mkCompare_() {
+      if (mk.bPreset === 'custom') return [mk.bFrom, mk.bTo];
+      if (mk.mode === 'month') {
+        if (mk.bPreset === 'yoy') return [ymAdd_(mk.from, -12), ymAdd_(mk.to, -12)];
+        let len = 0; for (let m = mk.from; m <= mk.to; m = ymAdd_(m, 1)) len++;
+        return [ymAdd_(mk.from, -len), ymAdd_(mk.from, -1)];
+      }
+      if (mk.bPreset === 'yoy') return [(Number(mk.from.slice(0, 4)) - 1) + mk.from.slice(4), (Number(mk.to.slice(0, 4)) - 1) + mk.to.slice(4)];
+      const len = daysBetween_(mk.from, mk.to) + 1;
+      return [dayAdd_(mk.from, -len), dayAdd_(mk.from, -1)];
+    }
+
+    function renderMkCtl_() {
+      const box = document.getElementById('mkCtl');
+      if (!box) return;
+      if (mk.preset !== 'custom') { const r = mkPreset_(mk.preset, mk.mode); mk.from = r[0]; mk.to = r[1]; }
+      if (mk.cmp && mk.bPreset !== 'custom') { const r = mkCompare_(); mk.bFrom = r[0]; mk.bTo = r[1]; }
+      const type = mk.mode === 'month' ? 'month' : 'date';
+      const presets = [['thisMonth', '本月'], ['lastMonth', '上月'], ['last3', '近 3 個月'], ['thisYear', '今年'], ['lastYear', '去年'], ['custom', '自訂']];
+      const sel = function (opts, val, on) { return '<select onchange="' + on + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === val ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; };
+      box.innerHTML =
+        '<div class="row-2"><div><label style="margin-top:0;">區間方式</label>' + sel([['month', '依月份'], ['date', '依日期（活動期間）']], mk.mode, "mk.mode=this.value; renderMkCtl_()") + '</div>' +
+        '<div><label style="margin-top:0;">快速選擇</label>' + sel(presets, mk.preset, "mk.preset=this.value; renderMkCtl_()") + '</div></div>' +
+        '<div class="row-2"><div><label>從</label><input type="' + type + '" value="' + esc(mk.from) + '" onchange="mk.from=this.value; mk.preset=\'custom\'; renderMkCtl_()"></div>' +
+        '<div><label>到</label><input type="' + type + '" value="' + esc(mk.to) + '" onchange="mk.to=this.value; mk.preset=\'custom\'; renderMkCtl_()"></div></div>' +
+        '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:10px;"><input type="checkbox" style="width:18px; height:18px;"' + (mk.cmp ? ' checked' : '') +
+          ' onchange="mk.cmp=this.checked; renderMkCtl_()">跟另一個區間比較</label>' +
+        (mk.cmp ? '<div class="sub-panel" style="margin-top:6px;"><label style="margin-top:0;">比較區間（B）</label>' +
+          sel([['yoy', '去年同期'], ['prev', '前一段（同樣長度）'], ['custom', '自訂']], mk.bPreset, "mk.bPreset=this.value; renderMkCtl_()") +
+          '<div class="row-2"><div><label>從</label><input type="' + type + '" value="' + esc(mk.bFrom) + '" onchange="mk.bFrom=this.value; mk.bPreset=\'custom\'; renderMkCtl_()"></div>' +
+          '<div><label>到</label><input type="' + type + '" value="' + esc(mk.bTo) + '" onchange="mk.bTo=this.value; mk.bPreset=\'custom\'; renderMkCtl_()"></div></div></div>' : '') +
+        '<div class="jump-links" style="margin-top:12px;"><button type="button" class="mini-btn" onclick="loadMarketing_()">查詢</button>' +
+          '<button type="button" class="mini-btn grey" onclick="exportMarketing_()">⬇ 匯出 Excel</button></div>';
+    }
+
+    function loadMarketing_() {
+      const box = document.getElementById('mkBox');
+      if (!box) return;
+      if (!mk.from || !mk.to) { showToast('請選擇區間'); return; }
+      box.innerHTML = '<div class="empty">計算中...</div>';
+      api().withSuccessHandler(function (r) { mkData = r; renderMarketing_(); })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getMarketingAnalysis({ mode: mk.mode, from: mk.from, to: mk.to, cmpFrom: mk.cmp ? mk.bFrom : '', cmpTo: mk.cmp ? mk.bTo : '' });
+    }
+
+    function mkRangeText_(q) { return q.from === q.to ? q.from.replace(/-/g, '/') : q.from.replace(/-/g, '/') + '～' + q.to.replace(/-/g, '/'); }
+    function mkDelta_(a, b, pct) {
+      if (b === undefined || b === null) return '';
+      const d = a - b;
+      if (pct) { const pp = Math.round(d * 100); return '<span class="' + (pp > 0 ? 'up' : pp < 0 ? 'down' : '') + '">' + (pp > 0 ? '↑' : pp < 0 ? '↓' : '') + Math.abs(pp) + ' 個百分點</span>'; }
+      const r = b ? Math.round(d / b * 100) : null;
+      return '<span class="' + (d > 0 ? 'up' : d < 0 ? 'down' : '') + '">' + (d > 0 ? '↑' : d < 0 ? '↓' : '') + Math.abs(d) + (r !== null ? '（' + (r > 0 ? '+' : '') + r + '%）' : '') + '</span>';
+    }
+
     function renderMarketing_() {
       const box = document.getElementById('mkBox');
       if (!box || !mkData) return;
-      const o = mkData.groups[mkScope] || mkData.groups['集團'];
-      if (!o) { box.innerHTML = '<div class="empty">這個月還沒有匯入新客來源明細表。</div>'; return; }
-      const dims = [['source', '來源'], ['channel', '預約管道'], ['item', '諮詢項目']];
-      const list = o.by[mkDim] || [];
-      const top = list.length ? list[0].visits : 1;
-      box.innerHTML =
-        '<div class="row-2"><div><label style="margin-top:0;">範圍</label><select onchange="mkScope=this.value; renderMarketing_()">' +
-          ['集團'].concat(mkData.branches).map(function (g) { return '<option' + (g === mkScope ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '</select></div>' +
-        '<div><label style="margin-top:0;">依</label><select onchange="mkDim=this.value; renderMarketing_()">' +
-          dims.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === mkDim ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div></div>' +
-        '<div class="kpi-grid" style="margin-top:12px;">' +
-          kpiBox('到診新客', o.visits + ' 位', '含未成交') +
-          kpiBox('成交新客', o.deals + ' 位', '成交率 ' + Math.round(o.rate * 100) + '%') + '</div>' +
-        list.map(function (v) {
-          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(v.name) + '</span>' +
-            '<span class="row-meta">到診 <b>' + v.visits + '</b>・成交 <b>' + v.deals + '</b>・成交率 <b>' + Math.round(v.rate * 100) + '%</b></span></div>' +
-            '<div class="progress"><div style="width:' + Math.round(v.visits / top * 100) + '%"></div></div></div>';
-        }).join('');
+      const A = mkData.a.groups[mk.scope] || mkData.a.groups['集團'];
+      const B = mkData.b ? (mkData.b.groups[mk.scope] || { visits: 0, deals: 0, rate: 0, by: { source: [], channel: [], item: [] }, trend: [], trendBy: {} }) : null;
+      const scopes = ['集團'].concat(mkData.a.branches);
+      const sel = function (opts, val, on) { return '<select onchange="' + on + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === val ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>'; };
+      let h = '<div class="row-2" style="margin-top:12px;"><div><label style="margin-top:0;">範圍</label>' + sel(scopes.map(function (g) { return [g, g]; }), mk.scope, "mk.scope=this.value; mk.trendCat=''; renderMarketing_()") + '</div>' +
+        '<div><label style="margin-top:0;">依</label>' + sel(MK_DIMS, mk.dim, "mk.dim=this.value; mk.trendCat=''; renderMarketing_()") + '</div></div>';
+      h += '<div class="hint">A：' + esc(mkRangeText_(mkData.a.q)) + (B ? '　B：' + esc(mkRangeText_(mkData.b.q)) : '') +
+        (mkData.a.noDate ? '<br>⚠️ 另有 ' + mkData.a.noDate + ' 位來源表沒有填日期，依日期查詢時未列入' : '') + '</div>';
+      if (!A) { box.innerHTML = h + '<div class="empty">這段期間沒有新客來源明細表的資料。</div>'; return; }
+      h += '<div class="kpi-grid" style="margin-top:8px;">' +
+        kpiBox('到診新客', A.visits + ' 位', B ? 'B ' + B.visits + ' 位　' + mkDelta_(A.visits, B.visits) : '含未成交') +
+        kpiBox('成交新客', A.deals + ' 位', '成交率 ' + Math.round(A.rate * 100) + '%' + (B ? '<br>B ' + B.deals + ' 位・' + Math.round(B.rate * 100) + '%　' + mkDelta_(A.rate, B.rate, true) : '')) + '</div>';
+      // 分類
+      const listA = A.by[mk.dim] || [], mapB = {};
+      if (B) (B.by[mk.dim] || []).forEach(function (v) { mapB[v.name] = v; });
+      const names = listA.map(function (v) { return v.name; });
+      if (B) (B.by[mk.dim] || []).forEach(function (v) { if (names.indexOf(v.name) === -1) names.push(v.name); });
+      const top = Math.max.apply(null, [1].concat(listA.map(function (v) { return v.visits; })));
+      h += '<div class="group-title">依' + MK_DIMS.filter(function (x) { return x[0] === mk.dim; })[0][1] + '</div>' + names.map(function (n) {
+        const a = listA.filter(function (v) { return v.name === n; })[0] || { visits: 0, deals: 0, rate: 0 }, b = mapB[n];
+        return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(n) + '</span>' +
+          '<span class="row-meta">到診 <b>' + a.visits + '</b>・成交 <b>' + a.deals + '</b>・成交率 <b>' + Math.round(a.rate * 100) + '%</b></span></div>' +
+          '<div class="progress"><div style="width:' + Math.round(a.visits / top * 100) + '%"></div></div>' +
+          (B ? '<div class="row-meta">B：到診 ' + (b ? b.visits : 0) + '・成交 ' + (b ? b.deals : 0) + '・' + Math.round((b ? b.rate : 0) * 100) + '%　到診 ' + mkDelta_(a.visits, b ? b.visits : 0) + '　成交率 ' + mkDelta_(a.rate, b ? b.rate : 0, true) + '</div>' : '') +
+          '</div>';
+      }).join('');
+      // 每月趨勢
+      const trendOf = function (G) { return !G ? [] : mk.trendCat ? ((G.trendBy[mk.dim] || {})[mk.trendCat] || []) : G.trend; };
+      const tA = trendOf(A), tB = trendOf(B);
+      if (tA.length > 1 || (B && tB.length > 1)) {
+        h += '<div class="group-title">每月趨勢</div>' + sel([['', '全部']].concat(listA.map(function (v) { return [v.name, v.name]; })), mk.trendCat, "mk.trendCat=this.value; renderMarketing_()");
+        const tt = function (list, label) {
+          const mx = Math.max.apply(null, [1].concat(list.map(function (x) { return x.visits; })));
+          return (label ? '<div class="row-meta" style="margin-top:8px;"><b>' + label + '</b></div>' : '') + list.map(function (x) {
+            return '<div class="sub-row"><span>' + esc(x.month.replace('-', '/')) + '</span><span>到診 <b>' + x.visits + '</b>・成交 <b>' + x.deals + '</b>・' + Math.round(x.rate * 100) + '%</span></div>' +
+              '<div class="progress" style="margin:2px 0 6px;"><div style="width:' + Math.round(x.visits / mx * 100) + '%"></div></div>';
+          }).join('');
+        };
+        h += tt(tA, B ? 'A' : '') + (B ? tt(tB, 'B') : '');
+      }
+      box.innerHTML = h;
+    }
+
+    // 匯出 Excel：總覽、分類明細、每月趨勢
+    function exportMarketing_() {
+      if (!mkData) { showToast('請先查詢'); return; }
+      loadSheetJs_(function () {
+        const A = mkData.a.groups[mk.scope], B = mkData.b ? mkData.b.groups[mk.scope] : null;
+        if (!A) { showToast('這段期間沒有資料'); return; }
+        const pct = function (v) { return Math.round((v || 0) * 1000) / 10 + '%'; };
+        const qa = mkRangeText_(mkData.a.q), qb = mkData.b ? mkRangeText_(mkData.b.q) : '';
+        const s1 = [['行銷新客分析', mk.scope], ['區間 A', qa]].concat(B ? [['區間 B', qb]] : []).concat([[],
+          B ? ['項目', 'A', 'B', '差異'] : ['項目', '數值'],
+          ['到診新客', A.visits].concat(B ? [B.visits, A.visits - B.visits] : []),
+          ['成交新客', A.deals].concat(B ? [B.deals, A.deals - B.deals] : []),
+          ['成交率', pct(A.rate)].concat(B ? [pct(B.rate), Math.round((A.rate - B.rate) * 1000) / 10 + ' 個百分點'] : [])]);
+        const s2 = [];
+        MK_DIMS.forEach(function (d) {
+          s2.push([d[1]].concat(B ? ['A 到診', 'A 成交', 'A 成交率', 'B 到診', 'B 成交', 'B 成交率', '到診差異'] : ['到診', '成交', '成交率']));
+          const mapB = {};
+          if (B) B.by[d[0]].forEach(function (v) { mapB[v.name] = v; });
+          const names = A.by[d[0]].map(function (v) { return v.name; });
+          if (B) B.by[d[0]].forEach(function (v) { if (names.indexOf(v.name) === -1) names.push(v.name); });
+          names.forEach(function (n) {
+            const a = A.by[d[0]].filter(function (v) { return v.name === n; })[0] || { visits: 0, deals: 0, rate: 0 }, b = mapB[n] || { visits: 0, deals: 0, rate: 0 };
+            s2.push([n, a.visits, a.deals, pct(a.rate)].concat(B ? [b.visits, b.deals, pct(b.rate), a.visits - b.visits] : []));
+          });
+          s2.push([]);
+        });
+        const s3 = [['區間', '月份', '分類方式', '分類', '到診', '成交', '成交率']];
+        [['A', A]].concat(B ? [['B', B]] : []).forEach(function (pair) {
+          const G = pair[1];
+          G.trend.forEach(function (x) { s3.push([pair[0], x.month, '全部', '', x.visits, x.deals, pct(x.rate)]); });
+          MK_DIMS.forEach(function (d) {
+            Object.keys(G.trendBy[d[0]] || {}).forEach(function (n) {
+              G.trendBy[d[0]][n].forEach(function (x) { s3.push([pair[0], x.month, d[1], n, x.visits, x.deals, pct(x.rate)]); });
+            });
+          });
+        });
+        const wb = XLSX.utils.book_new();
+        [['總覽', s1], ['分類明細', s2], ['每月趨勢', s3]].forEach(function (x) { XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(x[1]), x[0]); });
+        XLSX.writeFile(wb, '行銷新客分析_' + mk.scope + '_' + qa.replace(/[\/～]/g, '') + '.xlsx');
+      });
     }
 
     // ---------- 對帳 ----------
