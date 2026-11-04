@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.1（行銷新客分析：區間、比較、趨勢、匯出）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.2（位／筆說明、名字處理、待承接、未分類、版本檢查）</div>
   </div>
 
   <script>
@@ -836,6 +836,8 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
+    const FRONT_VERSION = 'v39.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
         const r = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
@@ -1058,6 +1060,11 @@
       api()
         .withSuccessHandler(function (u) {
           perfUser = u;
+          // 網頁和後端版本不一致：提醒重新整理或更新 index.html
+          if (u.serverVersion && u.serverVersion !== FRONT_VERSION && !document.getElementById('verWarn')) {
+            document.body.insertAdjacentHTML('afterbegin', '<div id="verWarn" style="position:sticky; top:0; z-index:50; background:#FFF1CC; color:#7A5B00; padding:10px 14px; font-size:14px; text-align:center;">' +
+              '⚠️ 網頁（' + FRONT_VERSION + '）和後端（' + esc(u.serverVersion) + '）版本不一致，部分畫面可能出錯。請按 <b>Ctrl＋Shift＋R</b>（Mac：Cmd＋Shift＋R）重新整理；還是一樣的話，請確認 GitHub 的 index.html 已更新。</div>');
+          }
           // 集團主管預設看集團總覽；分店主管預設看自己的診所
           // 集團主管預設看集團總覽；分店主管平常和諮詢師一樣，先看自己的畫面
           viewAs = u.group ? '__team__' : u.name;
@@ -1657,24 +1664,84 @@
           }).join('') : '<div class="empty">目前沒有待核准的申請。</div>') + '</div>';
       }).withFailureHandler(function () {}).getTakeoverRequests(currentScope_());
 
-      api().withSuccessHandler(function (res) {
-        const box = document.getElementById('unassignedCard');
-        if (!box) return;
-        const opts = (perfUser.staff || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
-        box.innerHTML = '<div class="card visible"><div class="section-title">🧩　待承接顧客' +
-          '<span class="count-pill">' + res.total + ' 位</span></div>' +
-          '<div class="hint" style="margin-top:0;">目前諮詢師已離職、不在名單上或未指定的顧客，依等級與累積消費排序（最多列 50 位）。</div>' +
-          (res.list.length ? res.list.map(function (x) {
-            return '<div class="row-item" data-phone="' + esc(x.phone) + '">' +
-              '<div class="row-name">' + esc(x.name || '（未填姓名）') +
-              (x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '') + '</div>' +
-              '<div class="row-meta">原諮詢師：' + esc(x.from) + (x.branch ? '　' + esc(x.branch) : '') +
-              '<br>累積 ' + money(x.total) + (x.last ? '　上次到診 ' + esc(x.last) : '') + '</div>' +
-              '<div class="row-actions" style="align-items:center;"><select style="width:auto; padding:7px 34px 7px 10px; font-size:14px;">' +
-              '<option value="">指派給…</option>' + opts + '</select>' +
-              '<button class="mini-btn" onclick="assignUnassigned(this)">指派</button></div></div>';
-          }).join('') : '<div class="empty">沒有待承接的顧客。</div>') + '</div>';
-      }).withFailureHandler(function () {}).getUnassignedCustomers(currentScope_());
+      api().withSuccessHandler(function (res) { ua.all = res.list; ua.total = res.total; ua.shown = 50; ua.q = ''; ua.branch = ''; ua.grade = ''; ua.picked = {}; renderUnassigned_(); })
+        .withFailureHandler(function () {}).getUnassignedCustomers(currentScope_());
+    }
+
+    // ---------- 待承接顧客：顯示更多、搜尋、篩選、批次指派 ----------
+    const ua = { all: [], total: 0, shown: 50, q: '', branch: '', grade: '', picked: {} };
+    function uaFiltered_() {
+      const q = ua.q.trim();
+      return ua.all.filter(function (x) {
+        if (ua.branch && x.branch !== ua.branch) return false;
+        if (ua.grade && (x.grade || '無') !== ua.grade) return false;
+        if (q && String(x.name).indexOf(q) === -1 && String(x.phone).indexOf(q) === -1) return false;
+        return true;
+      });
+    }
+    function renderUnassigned_() {
+      const box = document.getElementById('unassignedCard');
+      if (!box) return;
+      const opts = (perfUser.staff || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+      const branches = ua.all.map(function (x) { return x.branch; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort();
+      const grades = ua.all.map(function (x) { return x.grade || '無'; }).filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
+      box.innerHTML = '<div class="card visible"><div class="section-title">🧩　待承接顧客<span class="count-pill" id="uaTotal">' + ua.total + ' 位</span></div>' +
+        '<div class="hint" style="margin-top:0;">諮詢師已離職、不在名單上或未指定的舊客，依等級與累積消費排序。新客會依新客來源明細表的服務人員自動歸屬。</div>' +
+        '<input type="text" placeholder="搜尋姓名或手機" value="' + esc(ua.q) + '" oninput="ua.q=this.value; ua.shown=50; uaList_()">' +
+        '<div class="row-2"><select onchange="ua.branch=this.value; ua.shown=50; uaList_()"><option value="">全部診所</option>' +
+          branches.map(function (b) { return '<option' + (b === ua.branch ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' +
+        '<select onchange="ua.grade=this.value; ua.shown=50; uaList_()"><option value="">全部等級</option>' +
+          grades.map(function (g) { return '<option' + (g === ua.grade ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="sub-panel" style="margin-top:8px;"><b>批次指派</b>：已勾選 <b id="uaPicked">0</b> 位　' +
+          '<button class="mini-btn grey" onclick="uaPickAll_(true)">勾選目前清單</button><button class="mini-btn grey" onclick="uaPickAll_(false)">全部取消</button>' +
+          '<div class="row-actions" style="align-items:center; margin-top:6px;"><select id="uaBatchStaff" style="width:auto; padding:7px 34px 7px 10px; font-size:14px;"><option value="">指派給…</option>' + opts + '</select>' +
+          '<button class="mini-btn" onclick="uaBatch_()">指派勾選的顧客</button></div></div>' +
+        '<div id="uaList"></div></div>';
+      uaList_();
+    }
+    // 只重畫清單（搜尋時游標不會跳掉）
+    function uaList_() {
+      const box = document.getElementById('uaList');
+      if (!box) return;
+      const opts = (perfUser.staff || []).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+      const list = uaFiltered_();
+      box.innerHTML = '<div class="row-meta" style="margin-top:8px;">符合條件 ' + list.length + ' 位' + (list.length > ua.shown ? '，目前顯示前 ' + ua.shown + ' 位' : '') + '</div>' +
+        (list.length ? list.slice(0, ua.shown).map(function (x) {
+          return '<div class="row-item" data-phone="' + esc(x.phone) + '">' +
+            '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin:0;"><input type="checkbox" style="width:18px; height:18px;"' + (ua.picked[x.phone] ? ' checked' : '') +
+            ' data-p="' + esc(x.phone) + '" onchange="ua.picked[this.dataset.p]=this.checked; uaCount_()">' +
+            '<span class="row-name">' + esc(x.name || '（未填姓名）') + (x.grade ? ' <span class="tag grade-' + esc(x.grade.toLowerCase()) + '">' + esc(x.grade) + '</span>' : '') + '</span></label>' +
+            '<div class="row-meta">原諮詢師：' + esc(x.from) + (x.branch ? '　' + esc(x.branch) : '') + '<br>累積 ' + money(x.total) + (x.last ? '　上次到診 ' + esc(x.last) : '') + '</div>' +
+            '<div class="row-actions" style="align-items:center;"><select style="width:auto; padding:7px 34px 7px 10px; font-size:14px;"><option value="">指派給…</option>' + opts + '</select>' +
+            '<button class="mini-btn" onclick="assignUnassigned(this)">指派</button></div></div>';
+        }).join('') : '<div class="empty">沒有符合的顧客。</div>') +
+        (list.length > ua.shown ? '<button type="button" class="add-item-btn" onclick="ua.shown+=50; uaList_()">顯示更多（還有 ' + (list.length - ua.shown) + ' 位）</button>' : '');
+      uaCount_();
+    }
+    function uaCount_() {
+      const el = document.getElementById('uaPicked');
+      if (el) el.textContent = Object.keys(ua.picked).filter(function (k) { return ua.picked[k]; }).length;
+      const t = document.getElementById('uaTotal');
+      if (t) t.textContent = ua.total + ' 位';
+    }
+    function uaPickAll_(on) {
+      if (!on) ua.picked = {};
+      else uaFiltered_().slice(0, ua.shown).forEach(function (x) { ua.picked[x.phone] = true; });
+      uaList_();
+    }
+    function uaBatch_() {
+      const staff = document.getElementById('uaBatchStaff').value;
+      const phones = Object.keys(ua.picked).filter(function (k) { return ua.picked[k]; });
+      if (!phones.length) { showToast('請先勾選顧客'); return; }
+      if (!staff) { showToast('請選擇要指派給誰'); return; }
+      if (!confirm('把勾選的 ' + phones.length + ' 位顧客指派給「' + staff + '」？')) return;
+      api().withSuccessHandler(function (n) {
+        showToast('已指派 ' + n + ' 位給 ' + staff);
+        ua.all = ua.all.filter(function (x) { return !ua.picked[x.phone]; });
+        ua.total -= n; ua.picked = {}; perfStale = true;
+        uaList_();
+      }).withFailureHandler(function (err) { showToast(err.message); })
+        .assignCustomersBatch({ phones: phones, staff: staff });
     }
 
     function decideTk(btn, approve) {
@@ -1698,6 +1765,10 @@
         .withSuccessHandler(function () {
           el.style.opacity = '1';
           el.innerHTML = '<div class="done-text">✅ 已指派給 ' + esc(staff) + '</div>';
+          ua.all = ua.all.filter(function (x) { return x.phone !== el.dataset.phone; });
+          ua.total = Math.max(ua.total - 1, 0);
+          delete ua.picked[el.dataset.phone];
+          uaCount_();
         })
         .withFailureHandler(function (err) { el.style.opacity = '1'; showToast(err.message); })
         .assignCustomerFromApp({ phone: el.dataset.phone, staff: staff });
@@ -1827,6 +1898,12 @@
 
       html += '<div class="card visible"><div class="section-title">👥　人員管理' +
         '<button class="mini-btn" onclick="showPersonForm(null)">＋ 新增人員</button></div>' +
+        ((d.pseudo || []).length ? '<div class="pace-box pace-yellow" style="margin:0 0 10px;"><b>⚠️ 這些看起來不是人員</b>（留在人員清單會被當成諮詢師，出現在排名和目標表）' +
+          d.pseudo.map(function (x, i) {
+            const btn = x.suggest === 'label' ? '改成非個人業績名稱' : x.suggest === 'alias' ? '改成「' + esc(x.target) + '」的別名' : '刪除';
+            return '<div style="margin-top:6px;"><b>' + esc(x.name) + '</b>：' + esc(x.why) +
+              '　<button class="mini-btn" data-i="' + i + '" onclick="fixPseudo_(this.dataset.i)">' + btn + '</button></div>';
+          }).join('') + '</div>' : '') +
         '<div id="personForm"></div>' +
         '<div class="group-title first">在職 <span class="count-pill">' + on.length + '</span></div>' + on.map(personRow).join('') +
         '<div class="group-title">離職 <span class="count-pill red">' + off.length + '</span></div>' +
@@ -2269,8 +2346,8 @@
           '<div class="row-meta">' + arr.slice(0, 50).map(esc).join('<br>') + (arr.length > 50 ? '<br>…' : '') + '</div>';
       };
       if (s.blocked) {
-        box.innerHTML = '<div class="sub-panel">' + list('⛔ 這些銷售人員對不到任何人，請先處理再匯入', s.unresolved, true) +
-          '<div class="hint">處理方式：如果是某位人員，到「人員管理」編輯她，在「別名」填上這個寫法；如果不是人（例如員購），加進上方「非個人業績名稱」。處理完重新選一次檔案。</div></div>';
+        box.innerHTML = '<div class="sub-panel"><div class="group-title">⛔ 這些銷售人員對不到任何人，請逐一處理 <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
+          unknownNamesHtml_(s.unresolvedRaw || [], s.unresolved, 'fd') + '</div>';
         return;
       }
       box.innerHTML = '<div class="sub-panel">' + (done ? '<div class="done-text">✅ 匯入完成</div>' : '<b>預覽（還沒寫入）</b>') +
@@ -2439,11 +2516,65 @@
         return '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
           '<div class="row-meta">' + arr.slice(0, 30).map(esc).join('<br>') + (arr.length > 30 ? '<br>…' : '') + '</div>';
       };
-      if (s.blocked) return list('⛔ 這些諮詢師對不到任何人，請先到「人員管理」補別名', s.unresolved, true);
+      if (s.blocked) return '<div class="group-title">⛔ 這些諮詢師對不到任何人，請逐一處理 <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
+        unknownNamesHtml_(s.unresolvedRaw || [], s.unresolved, 'fi');
       return '<div class="row-meta">' + (done ? '✅ 已匯入　' : '') + esc(s.range) + '　共 <b>' + s.lines + '</b> 列' +
         (s.replaced ? '（取代原本 ' + s.replaced + ' 列）' : '') + '<br>自動拆帳 <b>' + s.ok + '</b> 張單' + (s.manual ? '、沿用手動配對 ' + s.manual + ' 組' : '') + '</div>' +
         list('🟡 金額跟櫃台日報不同（已照營業報表拆，可到「拆帳待處理」改回）', s.mismatch, true) +
         list('❓ 對不上櫃台日報的單（請到「拆帳待處理」手動配對）', s.unmatched, true);
+    }
+
+    function fixPseudo_(i) {
+      const x = adminData.pseudo[Number(i)];
+      const msg = x.suggest === 'label' ? '把「' + x.name + '」從人員清單移除，改成非個人業績名稱？' :
+        x.suggest === 'alias' ? '把「' + x.name + '」從人員清單移除，改成「' + x.target + '」的別名？' : '把「' + x.name + '」從人員清單刪除？';
+      if (!confirm(msg + '（過去的業績紀錄不會被刪除）')) return;
+      api().withSuccessHandler(function () { showToast('已處理'); perfStale = true; loadAdmin(); })
+        .withFailureHandler(function (err) { showToast(err.message); })
+        .managePseudoPerson({ name: x.name, action: x.suggest, target: x.target || '' });
+    }
+
+    // ---------- 匯入時對不到的名字：直接在預覽處理 ----------
+    let unkNames = [];
+    function unknownNamesHtml_(raws, labels, from) {
+      if (!raws.length) return '<div class="row-meta">' + labels.map(esc).join('<br>') + '</div>';
+      const base = unkNames.length;
+      raws.forEach(function (r) { unkNames.push({ raw: r, from: from }); });
+      const people = ((adminData && adminData.people) || []).filter(function (p) { return p.status !== '離職'; }).map(function (p) { return p.name; });
+      return raws.map(function (r, i) {
+        const k = base + i;
+        return '<div class="row-item" id="unk' + k + '"><div class="row-name" style="font-size:15px;">' + esc(labels[i] || r) + '</div>' +
+          '<div class="jump-links" style="flex-wrap:wrap;">' +
+          '<button class="mini-btn" onclick="unkAct_(' + k + ', \'departed\')">是離職人員（自動建立）</button>' +
+          '<button class="mini-btn grey" onclick="unkAct_(' + k + ', \'nonperson\')">非個人業績（員購這類）</button></div>' +
+          '<div class="row-actions" style="align-items:center; margin-top:6px;"><select id="unkT' + k + '" style="width:auto; padding:7px 34px 7px 10px; font-size:14px;">' +
+          '<option value="">是在職人員的別名…</option>' + people.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('') + '</select>' +
+          '<button class="mini-btn" onclick="unkAct_(' + k + ', \'alias\')">設為別名</button></div></div>';
+      }).join('') + '<div class="hint">全部處理完，系統會自動重新預覽。</div>';
+    }
+
+    function unkAct_(k, action) {
+      const u = unkNames[k];
+      const target = action === 'alias' ? document.getElementById('unkT' + k).value : '';
+      if (action === 'alias' && !target) { showToast('請先選擇是哪一位人員'); return; }
+      const branch = u.from === 'fd' ? document.getElementById('fdBranch').value : '';
+      if (action === 'departed' && !confirm('把「' + u.raw + '」建立成離職人員？（不用 Email，不能登入；她的業績和退款會照實際計算）')) return;
+      api().withSuccessHandler(function () {
+        const el = document.getElementById('unk' + k);
+        if (el) el.innerHTML = '<div class="row-meta">✅ ' + esc(u.raw) + '：' + (action === 'departed' ? '已建立離職人員' : action === 'nonperson' ? '已加入非個人業績名稱' : '已設為「' + esc(target) + '」的別名') + '</div>';
+        u.done = true;
+        const left = unkNames.filter(function (x) { return x.from === u.from && !x.done; }).length;
+        if (!left) {
+          unkNames = [];
+          showToast('都處理好了，重新預覽中…');
+          api().withSuccessHandler(function (d) {
+            adminData = d;
+            if (u.from === 'fd' && fdParsed) api().withSuccessHandler(function (s) { renderFdPreview_(s, false); }).withFailureHandler(function (err) { showToast(err.message); }).importFrontDesk(fdReq_(true));
+            if (u.from === 'fi') runFinance_(true);
+          }).getAdminData();
+        }
+      }).withFailureHandler(function (err) { showToast(err.message); })
+        .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
     }
 
     // ---------- 管理員：匯入新客來源明細表 ----------
@@ -2534,6 +2665,8 @@
           }).join('<br>') +
           '<br>顧客主資料沒有、會自動建檔的成交新客：<b>' + s.toCreate + '</b> 位' +
           '<br>已建檔、會歸給服務人員的新客（10 月起）：<b>' + (s.toAssign || 0) + '</b> 位</div>' +
+          (s.dupPhone && s.dupPhone.length ? '<div class="group-title">⚠️ 電話相同但姓名不同 <span class="count-pill red">' + s.dupPhone.length + '</span></div><div class="row-meta">' + s.dupPhone.map(esc).join('<br>') + '</div>' : '') +
+          (s.badBirthday && s.badBirthday.length ? '<div class="group-title">⚠️ 生日格式錯誤 <span class="count-pill red">' + s.badBirthday.length + '</span></div><div class="row-meta">' + s.badBirthday.slice(0, 40).map(esc).join('<br>') + '</div>' : '') +
           (s.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到任何人（不影響全店新客數，補別名後個人新客數會自動算進去） <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
             '<div class="row-meta">' + s.unresolved.map(esc).join('、') + '</div>' : '') +
           (dryRun ? '<button type="button" class="primary-btn" id="nsBtn2" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(false)"><span>確認匯入</span></button>' : '');
@@ -3116,9 +3249,9 @@
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('新客業績', money(s.ns), (t.newT ? '目標 ' + money(t.newT) + '・' + pctText_(s.ns, t.newT) : '未設目標') + '<br>有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 筆' +
-          '<br>本月新客 ' + money(s.nsNew || 0) + '・前期延續 ' + money(s.ns - (s.nsNew || 0))) +
-        kpiBox('舊客業績', money(s.os), (t.oldT ? '目標 ' + money(t.oldT) + '・' + pctText_(s.os, t.oldT) : '未設目標') + '<br>舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 筆') +
+        kpiBox('新客業績', money(s.ns), '有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 筆' +
+          '<br>本月新客 ' + money(s.nsNew || 0) + '・前期延續 ' + money(s.ns - (s.nsNew || 0)) + dealsNote_(s.nc, s.nd, s.ndCont || 0, true)) +
+        kpiBox('舊客業績', money(s.os), '舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 筆' + dealsNote_(s.oc, s.od, 0, false)) +
         kpiBox('成交筆數', s.c + ' 筆', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
         kpiBox('Google 評論', s.rv + ' 則', t.review ? '目標 ' + t.review + ' 則・' + pctText_(s.rv, t.review) : '未設目標') +
         '</div>' + repeatHtml_(s.rl, s.rc) +
@@ -3185,8 +3318,10 @@
 
       // 療程類別業績與佔比
       if (d.categories.length) {
-        html += '<div class="card visible"><div class="section-title">💉　療程類別業績與佔比</div>' + d.categories.map(function (c) {
-          return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(c.name) + '</span>' +
+        html += '<div class="card visible"><div class="section-title">💉　療程類別業績與佔比</div><div id="uncatBox"></div>' + d.categories.map(function (c) {
+          const un = c.name === '未分類';
+          return '<div class="row-item"' + (un ? ' style="cursor:pointer;" data-m="' + esc(d.monthKey) + '" data-b="' + esc(d.scope || '') + '" onclick="loadUncat_(this.dataset.m, this.dataset.b)"' : '') + '>' +
+            '<div class="row-top"><span class="row-name">' + esc(c.name) + (un ? ' <span class="row-meta">（點我看是哪些單）</span>' : '') + '</span>' +
             '<span class="amount' + (c.s < 0 ? ' neg' : '') + '">' + money(c.s) + '　<span style="color:var(--text-muted); font-weight:700;">' + c.share + '%</span></span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0 2px;"><div style="width:' + Math.min(c.share, 100) + '%"></div></div>' +
             '<div class="row-meta">' + c.c + ' 人次</div>' +
@@ -3301,8 +3436,9 @@
       html += '<div class="card visible"><div class="section-title">🆕　新客／舊客業績</div>' +
         noBlock('新客業績', no.newSales, no.newTarget, no.newPct, '有消費新客 <b>' + no.newCount + '</b> 位・成交 <b>' + no.newDeals + '</b> 筆' +
           '<br>其中本月新客 ' + money(no.newSalesNew || 0) + '・前期新客延續 ' + money(no.newSales - (no.newSalesNew || 0)) +
+          dealsNote_(no.newCount, no.newDeals, no.newDealsCont || 0, true) +
           (d.pace ? paceText_(d.pace.newC, '新客') : '')) +
-        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 筆' +
+        noBlock('舊客業績', no.oldSales, no.oldTarget, no.oldPct, '本月舊客 <b>' + no.oldCount + '</b> 位・成交 <b>' + no.oldDeals + '</b> 筆' + dealsNote_(no.oldCount, no.oldDeals, 0, false) +
           (d.pace ? paceText_(d.pace.oldC, '舊客') : '')) +
         repeatHtml_(no.repeat) + '</div>';
 
@@ -3681,6 +3817,20 @@
       return '本月應休 <b>' + p.off + '</b> 天（固定公休 ' + p.fixedDays + ' 天' + (p.flexDays ? '＋排休 ' + p.flexDays + ' 天' : '') + '），工作 ' + p.work + ' 天';
     }
 
+    // 「位」跟「筆」為什麼不一樣
+    function dealsNote_(people, deals, cont, isNew) {
+      const parts = [];
+      if (isNew) {
+        if (cont > 0) parts.push('前期新客延續 ' + cont + ' 筆');
+        const same = deals - cont - people;
+        if (same > 0) parts.push('同一位付兩張以上 ' + same + ' 筆');
+        if (same < 0) parts.push(-same + ' 位來源表成交、但這個月沒有訂金／一次付清（例如只付次訂金）');
+      } else if (deals > people) {
+        parts.push((deals - people) + ' 筆是同一位這個月成交兩次以上');
+      }
+      return parts.length ? '<br><span style="font-size:12px;">（位＝人數、筆＝單數：' + parts.join('；') + '）</span>' : '';
+    }
+
     function ltBadge_(l, label) {
       if (!l || !l.level) return '';
       return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
@@ -3859,6 +4009,22 @@
       });
     }
 
+    // ---------- 未分類是哪些單 ----------
+    function loadUncat_(month, branch) {
+      const box = document.getElementById('uncatBox');
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (r) {
+        box.innerHTML = '<div class="sub-panel" style="margin-bottom:10px;"><b>未分類 ' + r.count + ' 筆、' + money(r.total) + '</b>（點標題可收起）' +
+          '<div class="hint">「還沒有拆帳」的單，匯入或配對營業報表後就會有療程類別；「沒有填項目（大）」請回營業報表補上。</div>' +
+          r.list.slice(0, 200).map(function (t) {
+            return '<div class="row-meta" style="margin-top:4px;">' + esc(t.date) + '　' + esc(t.name || '（沒有姓名）') + '　<b>' + money(t.amount) + '</b>　' + esc(t.staff) +
+              '　單號 ' + esc(t.receipt || '－') + '<br><span style="font-size:12px;">' + esc(t.why) + '</span></div>';
+          }).join('') + (r.list.length > 200 ? '<div class="row-meta">…只列前 200 筆（金額由大到小）</div>' : '') + '</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getUncategorized({ month: month, branch: branch });
+    }
+
     // ---------- 對帳 ----------
     let rcData = null;
     function loadReconcile_(month, branch) {
@@ -3884,6 +4050,11 @@
               (perfUser.sysAdmin ? '<button class="mini-btn grey" data-i="' + i + '" onclick="voidRc_(this.dataset.i)">作廢這筆</button>' : '') + '</div>' +
               '<div class="row-meta">單號 ' + esc(t.receipt || '（沒有）') + '　' + esc(t.payType) + '　負責 ' + esc(t.staff) + '　登錄 ' + esc(t.enteredBy || '－') + '　' + esc(t.recon || '') + '</div></div>';
           }).join('') + '<div class="hint">常見原因：測試資料、人員輸入的單號打錯（櫃台日報的那筆另外又匯入一次）、櫃台漏記。單號打錯的也會出現在「系統管理 → 疑似重複」。</div>';
+        }
+        if (r.noName && r.noName.length) {
+          h += '<div class="group-title">⚠️ 沒有客戶姓名的單（請到櫃台日報補上） <span class="count-pill red">' + r.noName.length + '</span></div>' + r.noName.map(function (t) {
+            return '<div class="row-meta">' + esc(t.date) + '　單號 ' + esc(t.receipt || '（沒有）') + '　' + money(t.amount) + '　' + esc(t.staff) + '</div>';
+          }).join('');
         }
         if (r.adminFixed.length) {
           h += '<div class="group-title">管理員修正過金額或負責人的單</div>' + r.adminFixed.map(function (t) {
