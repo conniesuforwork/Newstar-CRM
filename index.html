@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v38.2（金額以櫃台日報為準／成交筆數／對帳）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39（新客歸屬／自動改成交／行銷新客分析／加快載入）</div>
   </div>
 
   <script>
@@ -833,7 +833,7 @@
     // ===================== 登入與呼叫伺服器 =====================
     // 放在 GitHub Pages 時：把下面換成 Apps Script「網頁應用程式」的網址（.../exec）
     // 放在 Apps Script 時：保持空白即可
-    const CRM_API_URL ='https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
+    const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
     function serverRun_(fn, args, ok, fail) {
@@ -935,6 +935,7 @@
 
     function doLogout_(msg) {
       saveToken_('');
+      try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('crm_perf_') === 0) localStorage.removeItem(k); }); } catch (e) {}
       perfUser = null;
       perfStale = true;
       document.getElementById('perfBody').innerHTML = '';
@@ -1284,7 +1285,7 @@
         ownerNote.innerHTML = '這位顧客目前是 <b>' + esc(customer.consultant) + '</b> 的顧客。<br>本次消費可以直接把「負責諮詢師」改成你，業績就算你的，<b>不用等主管核准</b>；想長期經營再按「🙋 申請承接」。';
         ownerNote.style.display = 'block';
       } else if (perfUser && !perfUser.isOther && (!customer.consultant || customer.consultantStatus === '離職')) {
-        ownerNote.innerHTML = '這位顧客目前<b>沒有負責人</b>。你送出消費（負責人填你）或按「申請承接」，就會直接歸到你名下。';
+        ownerNote.innerHTML = '這位顧客目前<b>沒有負責人</b>。新客會依新客來源明細表的服務人員歸屬；舊客請按「申請承接」，由主管核准。這次消費的業績照樣可以記在你名下。';
         ownerNote.style.display = 'block';
       } else ownerNote.style.display = 'none';
       document.getElementById('txConsultant').value = defaultStaff;
@@ -1539,17 +1540,29 @@
     function loadPerf() {
       if (!perfUser) return;
       const body = document.getElementById('perfBody');
-      body.style.opacity = '0.5';
       const team = viewAs.indexOf('__') === 0;
       const scope = viewAs.indexOf('__scope__:') === 0 ? viewAs.slice(10) : '';
+      // 先顯示上一次的畫面（存在這台裝置），新資料算好再換上
+      const ck = 'crm_perf_' + perfUser.name + '|' + (team ? 'T|' + teamMonth + '|' + scope + '|' + teamDept : 'P|' + viewAs);
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(ck) || 'null'); } catch (e) {}
+      if (cached) {
+        try { if (team) renderTeam(cached); else renderPerf(cached); } catch (e) {}
+        body.insertAdjacentHTML('afterbegin', '<div id="perfUpdating" class="hint" style="text-align:center; margin:0 0 8px;">⏳ 先顯示上次的資料，正在更新成最新…</div>');
+      } else {
+        body.style.opacity = '0.5';
+      }
       const run = api()
         .withSuccessHandler(function (d) {
           body.style.opacity = '1';
           perfStale = false;
+          try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {}
           if (team) renderTeam(d); else renderPerf(d);
         })
         .withFailureHandler(function (err) {
           body.style.opacity = '1';
+          const up = document.getElementById('perfUpdating');
+          if (up) up.textContent = '⚠️ 更新失敗，目前顯示的是上次的資料：' + err.message;
           showToast(err.message);
         });
       if (team) run.getTeamOverview(teamMonth, scope, teamDept); else run.getConsultantDashboard(viewAs);
@@ -1616,7 +1629,7 @@
           document.getElementById('takeoverPanel').style.display = 'none';
           document.getElementById('tkReason').value = '';
           if (r && r.auto) {
-            showToast('這位顧客原本沒有負責人，已直接歸到你名下');
+            showToast('已送出承接申請，等主管核准');
             document.getElementById('takeoverBtn').style.display = 'none';
           } else showToast('已送出承接申請，等主管核准（這段期間消費照樣可以記在你名下）');
         })
@@ -2463,7 +2476,8 @@
               if (hi < 0) return;
               const h = aoa[hi].map(norm);
               const c = { date: h.indexOf('日期'), chart: h.indexOf('病例編號'), name: h.indexOf('客戶姓名'), bday: h.indexOf('生日'), phone: h.indexOf('電話'),
-                staff: h.indexOf('服務人員'), source: h.indexOf('來源'), item: h.indexOf('諮詢項目'), deal: h.indexOf('是否成交') };
+                staff: h.indexOf('服務人員'), source: h.indexOf('來源'), item: h.indexOf('諮詢項目'), deal: h.indexOf('是否成交'),
+                channel: h.indexOf('預約管道'), cs: h.indexOf('客服人員') };
               const rows = [];
               for (let i = hi + 1; i < aoa.length; i++) {
                 const r = aoa[i];
@@ -2473,7 +2487,7 @@
                 if (/^9\d{8}$/.test(ph)) ph = '0' + ph;                       // Excel 吃掉開頭的 0
                 const bd = c.bday >= 0 && typeof r[c.bday] === 'number' ? cellDay_(r[c.bday]) : g('bday');
                 rows.push({ date: cellDay_(c.date >= 0 ? r[c.date] : ''), chart: g('chart'), name: g('name'), birthday: bd, phone: ph,
-                  staffRaw: g('staff'), source: g('source'), item: g('item'), deal: g('deal') });
+                  staffRaw: g('staff'), source: g('source'), item: g('item'), deal: g('deal'), channel: g('channel'), cs: g('cs') });
               }
               if (rows.length) nsMonths.push({ tab: tab, month: month, rows: rows, deals: rows.filter(function (x) { return /成交/.test(x.deal) && !/未成交/.test(x.deal); }).length });
             });
@@ -2511,13 +2525,15 @@
               return arr && arr.length ? '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div>' +
                 '<div class="row-meta">' + arr.slice(0, 40).map(esc).join('<br>') + '</div>' : '';
             };
-            return '<b>' + esc(m.month) + '：有消費新客 ' + m.deals + ' 位</b>（' + m.rows + ' 位諮詢）' +
-              li('⚠️ 櫃台有付訂金／一次付清，但來源表標「未成交」（請修正來源表）', ck.notDeal, true) +
-              li('⚠️ 櫃台有付訂金／一次付清，但來源表找不到這位（請補進來源表）', ck.missing, true) +
-              li('ℹ️ 之前月份已算過新客，這個月不重複算（正確）', ck.earlier) +
+            return '<b>' + esc(m.month) + '：有消費新客 ' + (m.deals + (m.auto || 0)) + ' 位</b>（來源表成交 ' + m.deals + ' 位' +
+              (m.auto ? '＋自動改成成交 ' + m.auto + ' 位' : '') + '；到診 ' + m.rows + ' 位）' +
+              li('✅ 已自動改成成交（來源表標未成交，但同月櫃台有新客訂金／一次付清）', ck.notDeal) +
+              li('⚠️ 待確認：來源表找不到這位，但櫃台有新客訂金／一次付清（可能是之前的新客，或來源表漏記）', ck.missing, true) +
+              li('ℹ️ 之前月份已算過新客，這個月不重複算', ck.earlier) +
               li('ℹ️ 來源表成交，但櫃台日報這個月沒有新客訂金／一次付清', ck.srcOnly);
           }).join('<br>') +
-          '<br>顧客主資料沒有、會自動建檔的成交新客：<b>' + s.toCreate + '</b> 位</div>' +
+          '<br>顧客主資料沒有、會自動建檔的成交新客：<b>' + s.toCreate + '</b> 位' +
+          '<br>已建檔、會歸給服務人員的新客（10 月起）：<b>' + (s.toAssign || 0) + '</b> 位</div>' +
           (s.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到任何人（不影響全店新客數，補別名後個人新客數會自動算進去） <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
             '<div class="row-meta">' + s.unresolved.map(esc).join('、') + '</div>' : '') +
           (dryRun ? '<button type="button" class="primary-btn" id="nsBtn2" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(false)"><span>確認匯入</span></button>' : '');
@@ -3119,6 +3135,13 @@
           '<div class="hint">' + offText_(sl) + '（依' + esc(d.scope) + '公休規則）</div></div>';
       }
 
+      // 行銷新客分析（集團主管、管理員）
+      if (perfUser.group || perfUser.sysAdmin) {
+        html += '<div class="card visible"><div class="section-title">📣　行銷新客分析</div>' +
+          '<div class="hint" style="margin-top:0;">到診新客＝新客來源明細表的諮詢人數（含未成交）；成交含線上成交，以及同月櫃台有新客付款、自動改成成交的人。</div>' +
+          '<div id="mkBox" data-m="' + esc(d.monthKey) + '"><div class="empty">載入中...</div></div></div>';
+      }
+
       // 對帳
       html += '<div class="card visible"><div class="section-title">🧮　對帳（系統業績 vs 櫃台日報）</div>' +
         '<div class="hint" style="margin-top:0;">總額對不上時，按「開始對帳」，看是哪幾筆造成差額。</div>' +
@@ -3226,6 +3249,7 @@
       html += targetCardHtml();
       document.getElementById('perfBody').innerHTML = html;
       loadClinicTargets_(d.monthKey);
+      if (document.getElementById('mkBox')) loadMarketing_(d.monthKey);
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
@@ -3662,6 +3686,36 @@
       return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
     }
 
+    // ---------- 行銷新客分析 ----------
+    let mkData = null, mkScope = '集團', mkDim = 'source';
+    function loadMarketing_(month) {
+      api().withSuccessHandler(function (r) { mkData = r; renderMarketing_(); })
+        .withFailureHandler(function (err) { const b = document.getElementById('mkBox'); if (b) b.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getMarketingAnalysis({ month: month });
+    }
+    function renderMarketing_() {
+      const box = document.getElementById('mkBox');
+      if (!box || !mkData) return;
+      const o = mkData.groups[mkScope] || mkData.groups['集團'];
+      if (!o) { box.innerHTML = '<div class="empty">這個月還沒有匯入新客來源明細表。</div>'; return; }
+      const dims = [['source', '來源'], ['channel', '預約管道'], ['item', '諮詢項目']];
+      const list = o.by[mkDim] || [];
+      const top = list.length ? list[0].visits : 1;
+      box.innerHTML =
+        '<div class="row-2"><div><label style="margin-top:0;">範圍</label><select onchange="mkScope=this.value; renderMarketing_()">' +
+          ['集團'].concat(mkData.branches).map(function (g) { return '<option' + (g === mkScope ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label style="margin-top:0;">依</label><select onchange="mkDim=this.value; renderMarketing_()">' +
+          dims.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === mkDim ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div></div>' +
+        '<div class="kpi-grid" style="margin-top:12px;">' +
+          kpiBox('到診新客', o.visits + ' 位', '含未成交') +
+          kpiBox('成交新客', o.deals + ' 位', '成交率 ' + Math.round(o.rate * 100) + '%') + '</div>' +
+        list.map(function (v) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(v.name) + '</span>' +
+            '<span class="row-meta">到診 <b>' + v.visits + '</b>・成交 <b>' + v.deals + '</b>・成交率 <b>' + Math.round(v.rate * 100) + '%</b></span></div>' +
+            '<div class="progress"><div style="width:' + Math.round(v.visits / top * 100) + '%"></div></div></div>';
+        }).join('');
+    }
+
     // ---------- 對帳 ----------
     let rcData = null;
     function loadReconcile_(month, branch) {
@@ -4033,4 +4087,3 @@
   </script>
 </body>
 </html>
-
