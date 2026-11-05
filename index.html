@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.2（位／筆說明、名字處理、待承接、未分類、版本檢查）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.3（成交明細：整月、頁碼、銷售品項、品項彙總）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v39.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v39.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3511,17 +3511,7 @@
       html += '</div>';
 
       // --- 本月成交明細 ---
-      html += '<div class="card visible"><div class="section-title">🧾　本月成交明細</div>';
-      html += d.recent.length ? d.recent.map(function (r) {
-        const pt = (r.custType === '新客' ? '<span class="new-tag">新客</span>' : '') +
-          (r.payType && r.payType !== '全額' ? '<span class="pay-tag">' + esc(r.payType) + '</span>' : '') +
-          reconTag_(r.recon);
-        return '<div class="row-item"><div class="row-top"><div><div class="row-name">' + esc(r.customer || '（未填姓名）') + pt + '</div>' +
-          '<div class="row-meta">' + esc(r.date) + (r.items ? '　' + esc(r.items) : '') + '</div></div>' +
-          '<div class="amount' + (r.amount < 0 ? ' neg' : '') + '">' + money(r.amount) + '</div></div></div>';
-      }).join('') : '<div class="empty">本月還沒有成交紀錄。</div>';
-      if (d.recent.length >= 15) html += '<div class="empty">只顯示最近 15 筆。</div>';
-      html += '</div>';
+      html += '<div class="card visible" id="dealCard"><div class="section-title">🧾　成交明細</div><div class="empty">載入中...</div></div>';
 
       // 收款方式
       html += payCardHtml_('💳　我的收款方式', d.pay, d.contribution);
@@ -3542,6 +3532,7 @@
       }
 
       if (!d.viewingOther) setPerfBadge_(0);
+      setTimeout(function () { loadDeals_(d.name, ''); }, 0);
       // 拆帳單：業績有分給我、成交筆數算給別人
       if (d.dealElsewhere && d.dealElsewhere.length) {
         html += '<div class="card visible"><div class="section-title">🧾　本月有 ' + d.dealElsewhere.length + ' 張拆帳單，成交筆數算給別人</div>' +
@@ -4023,6 +4014,65 @@
           }).join('') + (r.list.length > 200 ? '<div class="row-meta">…只列前 200 筆（金額由大到小）</div>' : '') + '</div>';
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
         .getUncategorized({ month: month, branch: branch });
+    }
+
+    // ---------- 成交明細：整個月、每張單的銷售品項、品項彙總、每頁 20 筆 ----------
+    const dl = { name: '', data: null, page: 1, per: 20 };
+    function loadDeals_(name, month) {
+      dl.name = name;
+      const card = document.getElementById('dealCard');
+      if (!card) return;
+      const body = card.querySelector('.dl-body');
+      if (body) body.style.opacity = '0.5';
+      api().withSuccessHandler(function (r) { dl.data = r; dl.page = 1; renderDeals_(); })
+        .withFailureHandler(function (err) { card.innerHTML = '<div class="section-title">🧾　成交明細</div><div class="empty">' + esc(err.message) + '</div>'; })
+        .getMyDeals({ name: name, month: month });
+    }
+    function renderDeals_() {
+      const card = document.getElementById('dealCard');
+      const r = dl.data;
+      if (!card || !r) return;
+      const ym = function (m) { return m.slice(0, 4) + ' 年 ' + Number(m.slice(5, 7)) + ' 月'; };
+      const months = r.months.indexOf(r.month) === -1 ? [r.month].concat(r.months) : r.months;
+      const pages = Math.max(1, Math.ceil(r.rows.length / dl.per));
+      if (dl.page > pages) dl.page = pages;
+      const top = r.products.length ? r.products[0].s : 1;
+      const payWord = function (p) { return p === '全額' ? '一次付清' : p; };
+      let h = '<div class="section-title" style="justify-content:space-between;">🧾　成交明細' +
+        '<select style="width:auto; padding:6px 34px 6px 10px; font-size:14px;" onchange="loadDeals_(dl.name, this.value)">' +
+        months.map(function (m) { return '<option value="' + m + '"' + (m === r.month ? ' selected' : '') + '>' + ym(m) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="dl-body"><div class="sub-panel" style="margin:0 0 12px;">' + ym(r.month) + '共 <b>' + r.count + '</b> 筆、合計 <b>' + money(r.total) + '</b></div>';
+      // 本月賣出品項
+      h += '<div class="group-title first">賣出品項</div>' + (r.products.length ? r.products.map(function (p) {
+        return '<div class="sub-row"><span>' + esc(p.name) + '</span><span><b>' + money(p.s) + '</b>　' + p.n + ' 次</span></div>' +
+          '<div class="progress" style="height:6px; margin:3px 0 8px;"><div style="width:' + Math.max(Math.round(p.s / top * 100), 2) + '%"></div></div>';
+      }).join('') : '<div class="empty">這個月還沒有營業報表的品項。</div>') +
+        '<div class="hint" style="margin-top:0;">依營業報表的「項目（中）」統計，拆帳單只算分到的部分；還沒有品項的單不列入。</div>';
+      // 每張單
+      h += '<div class="group-title">每張單</div>' + (r.rows.length ? r.rows.slice((dl.page - 1) * dl.per, dl.page * dl.per).map(function (x) {
+        const tags = (x.custType === '新客' && !x.internal ? '<span class="new-tag">新客</span>' : '') + reconTag_(x.recon) +
+          (x.whole ? '<span class="pay-tag">拆帳</span>' : '') + (x.service ? '<span class="pay-tag">服務（不收費）</span>' : '') +
+          (x.change ? '<span class="pay-tag">療程更改</span>' : '') + (x.internal ? '<span class="pay-tag">非個人業績</span>' : '');
+        let items = '';
+        if (x.items.length) {
+          items = '<div class="sub-panel" style="margin:6px 0 0; padding:6px 10px;">' + x.items.map(function (it) {
+            return '<div class="sub-row"><span>' + esc(it.name || '（未填品項）') + '</span><span>' + (it.amount !== null ? money(it.amount) : '') + '</span></div>';
+          }).join('') +
+            (x.others.length ? '<div class="row-meta" style="font-size:12px; margin-top:4px;">同一張單 ' + x.others.map(function (o) { return esc(o.staff) + '：' + esc(o.name) + ' ' + money(o.amount); }).join('、') +
+              '（整張 ' + money(x.whole) + '）</div>' : '') + '</div>';
+        } else if (x.noItems) {
+          items = '<div class="row-meta" style="font-size:12px;">營業報表匯入後會顯示品項</div>';
+        }
+        return '<div class="row-item"><div class="row-top"><div style="flex:1; min-width:0;"><div class="row-name">' + esc(x.customer || '（未填姓名）') + tags + '</div>' +
+          '<div class="row-meta">' + esc(x.date.slice(5).replace('-', '/')) + (x.receipt ? '　單號 ' + esc(x.receipt) : '') + '　' + esc(payWord(x.payType)) +
+          (x.whole ? '<br>分到 ' + money(x.amount) + '／整張 ' + money(x.whole) : '') + '</div>' + items + '</div>' +
+          '<div class="amount' + (x.amount < 0 ? ' neg' : '') + '">' + money(x.amount) + '</div></div></div>';
+      }).join('') : '<div class="empty">這個月沒有成交紀錄。</div>');
+      if (pages > 1) h += '<div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:12px;">' +
+        '<button type="button" class="mini-btn grey"' + (dl.page <= 1 ? ' disabled' : '') + ' onclick="dl.page--; renderDeals_(); document.getElementById(\'dealCard\').scrollIntoView({behavior:\'smooth\'})">‹ 上一頁</button>' +
+        '<span class="row-meta">第 ' + dl.page + '／' + pages + ' 頁</span>' +
+        '<button type="button" class="mini-btn grey"' + (dl.page >= pages ? ' disabled' : '') + ' onclick="dl.page++; renderDeals_(); document.getElementById(\'dealCard\').scrollIntoView({behavior:\'smooth\'})">下一頁 ›</button></div>';
+      card.innerHTML = h + '</div>';
     }
 
     // ---------- 對帳 ----------
