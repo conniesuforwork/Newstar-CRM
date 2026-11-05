@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v39.3（成交明細：整月、頁碼、銷售品項、品項彙總）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v40（加快載入／品項日報表）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v39.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v40';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1065,6 +1065,14 @@
             document.body.insertAdjacentHTML('afterbegin', '<div id="verWarn" style="position:sticky; top:0; z-index:50; background:#FFF1CC; color:#7A5B00; padding:10px 14px; font-size:14px; text-align:center;">' +
               '⚠️ 網頁（' + FRONT_VERSION + '）和後端（' + esc(u.serverVersion) + '）版本不一致，部分畫面可能出錯。請按 <b>Ctrl＋Shift＋R</b>（Mac：Cmd＋Shift＋R）重新整理；還是一樣的話，請確認 GitHub 的 index.html 已更新。</div>');
           }
+          // 背景預先載入「我的業績」：切過去時先顯示這份，再更新
+          setTimeout(function () {
+            const v = u.group ? '__team__' : u.name;
+            const team = v.indexOf('__') === 0;
+            const ck = 'crm_perf_' + u.name + '|' + (team ? 'T|' + teamMonth + '||' + teamDept : 'P|' + v);
+            const run = api().withSuccessHandler(function (d) { try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {} }).withFailureHandler(function () {});
+            if (team) run.getTeamOverview(teamMonth, '', teamDept); else run.getConsultantDashboard(v);
+          }, 1500);
           // 集團主管預設看集團總覽；分店主管預設看自己的診所
           // 集團主管預設看集團總覽；分店主管平常和諮詢師一樣，先看自己的畫面
           viewAs = u.group ? '__team__' : u.name;
@@ -1836,6 +1844,15 @@
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
 
+      // 匯入品項日報表
+      html += '<div class="card visible"><div class="section-title">📥　匯入品項日報表（暫定品項）</div>' +
+        '<div class="hint" style="margin-top:0;">每天匯入，先讓每張單看得到「賣了什麼」，標示「暫定」。<b>業績分配不變</b>，仍照櫃台日報的銷售人員；營業報表匯入後一律以營業報表為準。' +
+        '用「同一天＋手機」配對櫃台日報的單。同一家店、同一天重新匯入會整批取代。</div>' +
+        '<div class="row-2"><div><label>這份是哪一家</label><select id="diBranch">' +
+          d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label>選擇檔案</label><input type="file" id="diFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readDailyFile(this)"></div></div>' +
+        '<div id="diPreview"></div></div>';
+
       // 匯入新客來源明細表
       html += '<div class="card visible"><div class="section-title">📥　匯入新客來源明細表（新客數）</div>' +
         '<div class="hint" style="margin-top:0;">只用來算「有消費新客數」（是否成交＝成交，同一人只算一次），個人依「服務人員」。<b>不讀任何金額</b>。' +
@@ -2577,6 +2594,71 @@
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
     }
 
+    // ---------- 管理員：匯入品項日報表 ----------
+    let diParsed = null;
+    function readDailyFile(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('diPreview');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const norm = function (x) { return String(x).replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')'); };
+            const rows = [];
+            wb.SheetNames.forEach(function (tab) {
+              const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: true, defval: '' });
+              let hi = -1;
+              for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+                const line = aoa[i].map(norm);
+                if (line.indexOf('付款日期') !== -1 && line.indexOf('顧客') !== -1 && (line.indexOf('金額') !== -1 || line.some(function (x) { return x.indexOf('收款金額') === 0; }))) { hi = i; break; }
+              }
+              if (hi < 0) return;
+              const h = aoa[hi].map(norm);
+              const col = function () { for (let a = 0; a < arguments.length; a++) { const k = arguments[a]; const i = h.findIndex(function (x) { return x === k || x.indexOf(k) === 0; }); if (i >= 0) return i; } return -1; };
+              const c = { date: col('付款日期'), name: col('顧客'), phone: col('手機', '電話'), staff: col('醫美師', '諮詢師', '銷售人員'), big: col('項目(大)'), mid: col('項目(中)'),
+                small: col('項目(小)'), qty: col('量'), total: col('總額'), amount: h.indexOf('金額') >= 0 ? h.indexOf('金額') : col('收款金額'), pay: h.indexOf('付款') };
+              for (let i = hi + 1; i < aoa.length; i++) {
+                const r = aoa[i];
+                const first = String(r[0] == null ? '' : r[0]).trim();
+                if (first === '合計') break;                       // 下方的合計、收款方式、轉單等區塊不讀
+                const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                const dk = cellDay_(c.date >= 0 ? r[c.date] : '');
+                if (!dk || !g('name')) continue;
+                rows.push({ date: dk, name: g('name'), phone: g('phone'), staffRaw: g('staff'), big: g('big'), mid: g('mid'), small: g('small'),
+                  qty: g('qty'), total: g('total').replace(/[^\d.\-]/g, ''), amount: g('amount').replace(/[^\d.\-]/g, ''), pay: g('pay') });
+              }
+            });
+            if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「付款日期」「顧客」「金額」欄。</div>'; return; }
+            diParsed = { rows: rows, fileName: file.name };
+            runDaily_(true);
+          } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function runDaily_(dryRun) {
+      if (!diParsed) return;
+      const box = document.getElementById('diPreview');
+      box.innerHTML = '<div class="empty">' + (dryRun ? '比對中...' : '匯入中...') + '</div>';
+      api().withSuccessHandler(function (s) {
+        const list = function (title, arr, red) {
+          return arr && arr.length ? '<div class="group-title">' + title + ' <span class="count-pill' + (red ? ' red' : '') + '">' + arr.length + '</span></div><div class="row-meta">' + arr.slice(0, 40).map(esc).join('<br>') + '</div>' : '';
+        };
+        box.innerHTML = '<div class="sub-panel"><b>' + (s.done ? '✅ 已匯入　' : '') + esc(s.range) + '</b>' +
+          '<div class="row-meta" style="margin-top:6px;">' + s.customers + ' 位顧客、' + s.lines + ' 項（其中贈送 ' + s.gifts + ' 項），實收合計 ' + money(s.total) +
+          '<br>配對到櫃台日報的單：<b>' + s.matched + '</b> 項' + (s.replaced ? '（取代原本 ' + s.replaced + ' 項）' : '') + '</div>' +
+          list('⚠️ 對不上櫃台日報的單（這些品項先不顯示；確認櫃台日報已匯入、手機或姓名一致後再匯入一次）', s.unmatched, true) +
+          list('ℹ️ 醫美師對不到人員（不影響品項顯示，補別名後會自動對上）', s.unresolved) +
+          (dryRun ? '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="runDaily_(false)"><span>確認匯入</span></button>' : '') + '</div>';
+        if (!dryRun) { perfStale = true; diParsed = null; document.getElementById('diFile').value = ''; showToast('品項日報表匯入完成'); }
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .importDailyItems({ branch: document.getElementById('diBranch').value, fileName: diParsed.fileName, rows: diParsed.rows, dryRun: dryRun });
+    }
+
     // ---------- 管理員：匯入新客來源明細表 ----------
     let nsMonths = [], nsFileName = '';
 
@@ -2690,6 +2772,14 @@
     function renderSplitIssues_() {
       const d = spData;
       let h = '';
+      const dd = d.dailyDiff || [];
+      h += '<div class="group-title">📋 營業報表跟品項日報表不同（已以營業報表為準） <span class="count-pill' + (dd.length ? ' red' : '') + '">' + dd.length + '</span></div>' +
+        (dd.length ? '<button type="button" class="mini-btn" onclick="if(confirm(\'全部 ' + dd.length + ' 張都確認以營業報表為準？\')) spAct({type:\'dailyok\', items: spData.dailyDiff.map(function(x){return {receipt:x.receipt, sig:x.sig};})})">全部確認</button>' +
+          dd.map(function (x, i) {
+            return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　單號 ' + esc(x.receipt) + '</div>' +
+              '<div class="row-meta">營業報表：' + (x.finance.length ? x.finance.map(esc).join('、') : '（沒有）') + '<br>日報表：' + (x.daily.length ? x.daily.map(esc).join('、') : '（沒有）') + '</div>' +
+              '<div class="jump-links"><button class="mini-btn" data-i="' + i + '" onclick="spAct({type:\'dailyok\', items:[{receipt: spData.dailyDiff[this.dataset.i].receipt, sig: spData.dailyDiff[this.dataset.i].sig}]})">✅ 確認</button></div></div>';
+          }).join('') : '<div class="empty">沒有。</div>');
       h += '<div class="group-title">🟡 營業報表跟櫃台日報金額不同（已照營業報表拆） <span class="count-pill' + (d.mismatch.length ? ' red' : '') + '">' + d.mismatch.length + '</span></div>';
       h += d.mismatch.length ? d.mismatch.map(function (x, i) {
         return '<div class="row-item"><div class="row-name" style="font-size:15px;">' + esc(x.branch) + '　' + esc(x.date) + '　' + esc(x.name) + '　單號 ' + esc(x.receipt) + '</div>' +
@@ -3532,7 +3622,11 @@
       }
 
       if (!d.viewingOther) setPerfBadge_(0);
-      setTimeout(function () { loadDeals_(d.name, ''); }, 0);
+      // 本月成交明細已經跟業績一起回來；舊版後端沒有才另外請求
+      setTimeout(function () {
+        if (d.deals) { dl.name = d.name; dl.data = d.deals; dl.page = 1; renderDeals_(); }
+        else loadDeals_(d.name, '');
+      }, 0);
       // 拆帳單：業績有分給我、成交筆數算給別人
       if (d.dealElsewhere && d.dealElsewhere.length) {
         html += '<div class="card visible"><div class="section-title">🧾　本月有 ' + d.dealElsewhere.length + ' 張拆帳單，成交筆數算給別人</div>' +
@@ -4047,7 +4141,8 @@
         return '<div class="sub-row"><span>' + esc(p.name) + '</span><span><b>' + money(p.s) + '</b>　' + p.n + ' 次</span></div>' +
           '<div class="progress" style="height:6px; margin:3px 0 8px;"><div style="width:' + Math.max(Math.round(p.s / top * 100), 2) + '%"></div></div>';
       }).join('') : '<div class="empty">這個月還沒有營業報表的品項。</div>') +
-        '<div class="hint" style="margin-top:0;">依營業報表的「項目（中）」統計，拆帳單只算分到的部分；還沒有品項的單不列入。</div>';
+        '<div class="hint" style="margin-top:0;">依營業報表的「項目（中）」統計，拆帳單只算分到的部分；0 元的贈送品項、還沒有品項的單不列入。' +
+          (r.provTotal ? '其中 ' + money(r.provTotal) + ' 來自品項日報表（暫定）。' : '') + '</div>';
       // 每張單
       h += '<div class="group-title">每張單</div>' + (r.rows.length ? r.rows.slice((dl.page - 1) * dl.per, dl.page * dl.per).map(function (x) {
         const tags = (x.custType === '新客' && !x.internal ? '<span class="new-tag">新客</span>' : '') + reconTag_(x.recon) +
@@ -4055,8 +4150,9 @@
           (x.change ? '<span class="pay-tag">療程更改</span>' : '') + (x.internal ? '<span class="pay-tag">非個人業績</span>' : '');
         let items = '';
         if (x.items.length) {
-          items = '<div class="sub-panel" style="margin:6px 0 0; padding:6px 10px;">' + x.items.map(function (it) {
-            return '<div class="sub-row"><span>' + esc(it.name || '（未填品項）') + '</span><span>' + (it.amount !== null ? money(it.amount) : '') + '</span></div>';
+          items = '<div class="sub-panel" style="margin:6px 0 0; padding:6px 10px;">' + (x.prov ? '<div class="row-meta" style="font-size:12px;">暫定（品項日報表），營業報表匯入後以營業報表為準</div>' : '') + x.items.map(function (it) {
+            const right = it.gift ? '<span class="pay-tag">贈送</span>' : it.amount !== null ? money(it.amount) + (it.total ? '<span class="row-meta" style="font-size:12px;">（總額 ' + money(it.total) + '）</span>' : '') : '';
+            return '<div class="sub-row"><span>' + esc(it.name || '（未填品項）') + '</span><span>' + right + '</span></div>';
           }).join('') +
             (x.others.length ? '<div class="row-meta" style="font-size:12px; margin-top:4px;">同一張單 ' + x.others.map(function (o) { return esc(o.staff) + '：' + esc(o.name) + ' ' + money(o.amount); }).join('、') +
               '（整張 ' + money(x.whole) + '）</div>' : '') + '</div>';
@@ -4172,7 +4268,9 @@
     function productCardHtml_(list) {
       if (!list || !list.length) return '<div class="card visible"><div class="section-title">🧾　品項銷售</div>' +
         '<div class="empty">本月還沒有匯入財務拆帳表。</div></div>';
-      return '<div class="card visible"><div class="section-title">🧾　品項銷售（財務拆帳表）</div>' + list.map(function (b) {
+      const prov = list.reduce(function (a, b) { return a + (b.prov || 0); }, 0);
+      return '<div class="card visible"><div class="section-title">🧾　品項銷售（營業報表' + (prov ? '＋品項日報表' : '') + '）</div>' +
+        (prov ? '<div class="hint" style="margin-top:0;">其中 ' + money(prov) + ' 來自品項日報表（暫定），營業報表匯入後會以營業報表為準。0 元的贈送品項不列入。</div>' : '') + list.map(function (b) {
         return '<details style="margin:6px 0;"><summary class="row-top" style="cursor:pointer;"><span class="row-name" style="font-size:15px;">' + esc(b.name) +
           ' <span class="count-pill">' + b.n + ' 件</span></span><span class="amount">' + money(b.s) + '</span></summary>' +
           '<div class="row-meta">新客 ' + money(b.ns) + '　舊客 ' + money(b.os) + '</div>' +
