@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v40（加快載入／品項日報表）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v41（加快跳轉／儲存提示／人員上線紀錄）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v40';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v41';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -881,6 +881,8 @@
     }
 
     // 所有伺服器功能都經過 crmCall 驗證登入；寫法和 google.script.run 一樣
+    let PREFETCH = {};
+    const SILENT_CALLS = { markChangesRead: 1, crmLogout: 1, logout: 1, adminFindTx: 1, fetchGoogleHolidays: 1, refreshCapacity: 1 };     // 背景動作，不用提示
     function api() {
       const st = { ok: null, fail: null };
       const proxy = new Proxy({}, {
@@ -889,8 +891,23 @@
           if (prop === 'withFailureHandler') return function (fn) { st.fail = fn; return proxy; };
           return function () {
             const args = Array.prototype.slice.call(arguments);
+            // 主管總覽已經一起帶回來的資料，直接用，不用再發請求
+            const pk = String(prop) + '|' + JSON.stringify(args);
+            if (Object.prototype.hasOwnProperty.call(PREFETCH, pk)) {
+              const v = PREFETCH[pk];
+              delete PREFETCH[pk];
+              setTimeout(function () { if (st.ok) st.ok(v); }, 0);
+              return;
+            }
+            // 會改資料的動作：成功後統一提示「✅ 已儲存」（畫面自己有提示的就不重複）
+            const isWrite = !/^(get|search|list|load|read)/.test(String(prop)) && !SILENT_CALLS[String(prop)] &&
+              !args.some(function (a) { return a && typeof a === 'object' && a.dryRun; });
+            const startedAt = Date.now();
             serverRun_('crmCall', [authToken, String(prop), args],
-              function (r) { if (st.ok) st.ok(r); },
+              function (r) {
+                if (st.ok) st.ok(r);
+                if (isWrite) setTimeout(function () { if (lastToastAt < startedAt) showToast('✅ 已儲存'); }, 400);
+              },
               function (err) {
                 const msg = String(err && err.message || err);
                 if (/重新登入|已過期|已失效/.test(msg)) { doLogout_(msg.replace(/^.*?:\s*/, '')); return; }
@@ -912,7 +929,7 @@
       btn.innerHTML = '<span>登入中...</span>';
       const remember = document.getElementById('lgRemember').checked;
       try { localStorage.setItem('crm_remember', remember ? '1' : ''); } catch (e) {}
-      serverRun_('crmLogin', [email, pw, remember],
+      serverRun_('crmLogin', [email, pw, remember, navigator.userAgent],
         function (r) {
           btn.disabled = false;
           btn.innerHTML = '<span>登入</span>';
@@ -1099,7 +1116,7 @@
           document.getElementById('perfStatusText').textContent = err.message;
           document.getElementById('perfRetryBtn').style.display = 'inline-block';
         })
-        .getMyIdentity();
+        .getMyIdentity(navigator.userAgent);
     }
 
     // ---------- Step 導覽 ----------
@@ -1819,7 +1836,8 @@
         '<span style="font-size:15px; color:var(--text-muted);"><b style="color:var(--text); font-size:19px;">' + cap.pct + '%</b></span></div>' +
         '<div class="progress"><div style="width:' + Math.min(cap.pct, 100) + '%; background:' + capColor + ';"></div></div>' +
         '<div class="hint">已用 ' + cap.used.toLocaleString('en-US') + ' / ' + cap.limit.toLocaleString('en-US') + ' 格（空白格也算）。' +
-        (cap.level === 0 ? '容量充足。' : cap.level === 1 ? '已超過 70%，建議先清除空白列。' : '已超過 85%，請盡快清除空白列並封存舊資料。') + '</div>' +
+        (cap.level === 0 ? '容量充足。' : cap.level === 1 ? '已超過 70%，建議先清除空白列。' : '已超過 85%，請盡快清除空白列並封存舊資料。') +
+        (cap.checkedAt ? '<br>檢查時間 ' + esc(cap.checkedAt) + '（一天自動檢查一次）　<a href="#" onclick="api().withSuccessHandler(function(c){adminData.capacity=c; renderAdmin(); showToast(\'已重新檢查\');}).withFailureHandler(function(e){showToast(e.message);}).refreshCapacity(); return false;">重新檢查</a>' : '') + '</div>' +
         '<div class="group-title">佔用最多的分頁</div>' + cap.sheets.slice(0, 5).map(function (s) {
           return '<div class="sub-row" style="padding-left:0;"><span>' + esc(s.name) + '（資料 ' + s.dataRows + ' 列／共 ' + s.rows + ' 列）</span><b>' + s.cells.toLocaleString('en-US') + '</b></div>';
         }).join('') +
@@ -1843,6 +1861,11 @@
         '<label>選擇檔案（營業報表）</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)">' +
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
+
+      // 人員上線狀況
+      html += '<div class="card visible"><div class="section-title">👀　人員上線狀況</div>' +
+        '<div class="hint" style="margin-top:0;">🟢 線上＝5 分鐘內有操作。最後上線＝最後一次有操作的時間（有勾「記住我」自動登入的也算）。點人名看最近 30 次登入紀錄。</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadOnline_()">載入</button><div id="onBox"></div></div>';
 
       // 匯入品項日報表
       html += '<div class="card visible"><div class="section-title">📥　匯入品項日報表（暫定品項）</div>' +
@@ -2594,6 +2617,41 @@
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
     }
 
+    // ---------- 管理員：人員上線狀況 ----------
+    let onData = null, onBranch = '';
+    function loadOnline_() {
+      const box = document.getElementById('onBox');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (r) { onData = r; renderOnline_(); })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getOnlineStatus();
+    }
+    function renderOnline_() {
+      const box = document.getElementById('onBox');
+      if (!box || !onData) return;
+      const branches = onData.list.map(function (x) { return x.branch; }).filter(function (b, i, a) { return b && a.indexOf(b) === i; }).sort();
+      const list = onData.list.filter(function (x) { return !onBranch || x.branch === onBranch; });
+      const on = list.filter(function (x) { return x.online; }).length, never = list.filter(function (x) { return x.never; }).length;
+      box.innerHTML = '<div class="row-2" style="align-items:end;"><select onchange="onBranch=this.value; renderOnline_()"><option value="">全部診所</option>' +
+        branches.map(function (b) { return '<option' + (b === onBranch ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' +
+        '<button type="button" class="mini-btn grey" onclick="loadOnline_()">🔄 重新整理</button></div>' +
+        '<div class="row-meta" style="margin:8px 0;">' + esc(onData.now) + '：🟢 線上 <b>' + on + '</b> 位　⚪ 離線 ' + (list.length - on - never) + ' 位' + (never ? '　<b style="color:#9B3F2D;">從未登入 ' + never + ' 位</b>' : '') + '</div>' +
+        list.map(function (x, i) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px; cursor:pointer;" data-n="' + esc(x.name) + '" onclick="loadLoginHistory_(this.dataset.n, this)">' +
+            (x.online ? '🟢 ' : x.never ? '— ' : '⚪ ') + esc(x.name) + '</span><span class="row-meta">' + (x.never ? '<b style="color:#9B3F2D;">從未登入</b>' : '最後上線 ' + esc(x.last)) + '</span></div>' +
+            '<div class="row-meta">' + esc(x.branch || '（未填診所）') + '　本月登入 ' + x.monthLogins + ' 次' + (x.device ? '　' + esc(x.device) : '') + '</div><div class="lh"></div></div>';
+        }).join('');
+    }
+    function loadLoginHistory_(name, el) {
+      const box = el.closest('.row-item').querySelector('.lh');
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="row-meta">讀取中...</div>';
+      api().withSuccessHandler(function (rows) {
+        box.innerHTML = '<div class="sub-panel" style="margin-top:6px;">' + (rows.length ? rows.map(function (r) {
+          return '<div class="sub-row"><span>' + esc(r.at) + '</span><span class="row-meta">' + esc(r.how) + (r.device ? '　' + esc(r.device) : '') + (r.browser ? '／' + esc(r.browser) : '') + '</span></div>';
+        }).join('') : '<div class="row-meta">還沒有登入紀錄（這個功能更新之後才開始記錄）。</div>') + '</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="row-meta">' + esc(err.message) + '</div>'; }).getLoginHistory(name);
+    }
+
     // ---------- 管理員：匯入品項日報表 ----------
     let diParsed = null;
     function readDailyFile(input) {
@@ -3295,6 +3353,7 @@
     let teamData = null, teamSortLag = false;     // 主管畫面：可改依落後程度排序
     function renderTeam(d) {
       teamData = d;
+      PREFETCH = Object.assign({}, d.prefetch || {});      // 這次總覽帶回來的卡片資料
       const s = d.store, t = s.target;
       let html = '<div class="perf-head"><span>' + whoSelect_(viewAs) + '　' + d.updatedAt + ' 更新</span>' +
         '<button class="link-btn" onclick="loadPerf()">重新整理</button></div>';
@@ -3408,9 +3467,9 @@
 
       // 療程類別業績與佔比
       if (d.categories.length) {
-        html += '<div class="card visible"><div class="section-title">💉　療程類別業績與佔比</div><div id="uncatBox"></div>' + d.categories.map(function (c) {
+        html += '<div class="card visible"><div class="section-title">💉　療程類別業績與佔比</div>' + d.categories.map(function (c) {
           const un = c.name === '未分類';
-          return '<div class="row-item"' + (un ? ' style="cursor:pointer;" data-m="' + esc(d.monthKey) + '" data-b="' + esc(d.scope || '') + '" onclick="loadUncat_(this.dataset.m, this.dataset.b)"' : '') + '>' +
+          return '<div class="row-item"' + (un ? ' style="cursor:pointer;" data-m="' + esc(d.monthKey) + '" data-b="' + esc(d.scope || '') + '" onclick="loadUncat_(this.dataset.m, this.dataset.b, this)"' : '') + '>' +
             '<div class="row-top"><span class="row-name">' + esc(c.name) + (un ? ' <span class="row-meta">（點我看是哪些單）</span>' : '') + '</span>' +
             '<span class="amount' + (c.s < 0 ? ' neg' : '') + '">' + money(c.s) + '　<span style="color:var(--text-muted); font-weight:700;">' + c.share + '%</span></span></div>' +
             '<div class="progress" style="height:8px; margin:6px 0 2px;"><div style="width:' + Math.min(c.share, 100) + '%"></div></div>' +
@@ -3474,7 +3533,7 @@
       html += targetCardHtml();
       document.getElementById('perfBody').innerHTML = html;
       loadClinicTargets_(d.monthKey);
-      if (document.getElementById('mkBox')) { renderMkCtl_(); loadMarketing_(); }
+      if (document.getElementById('mkBox')) { renderMkCtl_(); document.getElementById('mkBox').innerHTML = '<div class="empty">選好區間後按「查詢」。</div>'; }
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
@@ -4095,12 +4154,17 @@
     }
 
     // ---------- 未分類是哪些單 ----------
-    function loadUncat_(month, branch) {
-      const box = document.getElementById('uncatBox');
-      if (box.innerHTML) { box.innerHTML = ''; return; }
+    function loadUncat_(month, branch, row) {
+      // 清單直接展開在「未分類」那一列下面；再點一次收起來
+      let box = row.querySelector('.uncat-box');
+      if (box) { box.remove(); return; }
+      box = document.createElement('div');
+      box.className = 'uncat-box';
+      box.onclick = function (e) { e.stopPropagation(); };
+      row.appendChild(box);
       box.innerHTML = '<div class="empty">讀取中...</div>';
       api().withSuccessHandler(function (r) {
-        box.innerHTML = '<div class="sub-panel" style="margin-bottom:10px;"><b>未分類 ' + r.count + ' 筆、' + money(r.total) + '</b>（點標題可收起）' +
+        box.innerHTML = '<div class="sub-panel" style="margin:8px 0 4px; cursor:default;"><b>未分類 ' + r.count + ' 筆、' + money(r.total) + '</b>（再點一次「未分類」可收起）' +
           '<div class="hint">「還沒有拆帳」的單，匯入或配對營業報表後就會有療程類別；「沒有填項目（大）」請回營業報表補上。</div>' +
           r.list.slice(0, 200).map(function (t) {
             return '<div class="row-meta" style="margin-top:4px;">' + esc(t.date) + '　' + esc(t.name || '（沒有姓名）') + '　<b>' + money(t.amount) + '</b>　' + esc(t.staff) +
@@ -4539,7 +4603,9 @@
       if (authToken) startApp_();
     }, 0);
 
+    let lastToastAt = 0;
     function showToast(msg) {
+      lastToastAt = Date.now();
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
