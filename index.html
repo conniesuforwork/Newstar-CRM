@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.1（未使用課程加快、讀取中提示）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.2（未消耗療程分美療／非美療）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v42.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v42.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -2187,7 +2187,7 @@
           '<div class="hint" style="margin-top:0;">POS 資料日期：' + esc(up) + '，之後在 CRM 記錄的使用已自動扣除。點一下＝這次使用這項。</div>' +
           customerCourses.map(function (c, i) {
             return '<div class="candidate" style="margin:8px 0 0; padding:10px 12px;" data-i="' + i + '" onclick="useCourse(this.dataset.i)"><div class="info">' +
-              '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
+              '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.cat ? ' <span class="pay-tag">' + esc(c.cat) + '</span>' : '') + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
               '<div class="meta">' + (c.used ? '預估剩 <b>' + c.est + '</b> 次（POS ' + c.left + ' 次，' + esc(c.dataDay) + ' 後已用 ' + c.used + ' 次）'
                 : '剩 <b>' + c.left + '</b> 次') + (c.price ? '・單價 ' + money(c.price) + '・剩餘 ' + money(c.estAmount) : '') +
               '・' + esc(c.tab) + (customerCourses.length && c.branch ? '・' + esc(c.branch) : '') +
@@ -2288,6 +2288,11 @@
                 (rows.length ? '<div class="hint">有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' +
                   rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length + ' 筆' +
                   (rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length < rows.length / 2 ? '　<b style="color:#9B3F2D;">⚠️ 大部分剩餘數是 0，欄位可能讀錯，請確認是 POS 匯出的明細</b>' : '') + '</div>' : '') +
+                '<label>類別（只會取代同一家診所、同一類別的資料）</label><select id="posCat"><option value="">請選擇</option>' +
+                  ['美療', '非美療'].map(function (k) {
+                    const guess = /非美療/.test(file.name) ? '非美療' : /美療/.test(file.name) ? '美療' : '';
+                    return '<option' + (k === guess ? ' selected' : '') + '>' + k + '</option>';
+                  }).join('') + '</select>' +
                 '<label>POS 資料截止日（從 POS 匯出的那一天）</label><input type="date" id="posDataDate" value="' + localDateStr() + '">' +
                 '<div class="hint">這天之後在 CRM 記錄的「服務（不收費）」，會自動從剩餘次數扣掉。</div>' +
                 '<datalist id="pfBranchList2">' + adminData.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
@@ -3225,19 +3230,33 @@
       if (!posParsed) return;
       const branch = document.getElementById('posBranch').value.trim();
       if (!branch) { showToast('請選擇這份資料是哪一家診所'); return; }
-      if (!confirm('會用這份檔案取代「' + branch + '」目前所有的未消耗療程資料，確定匯入？')) return;
+      const cat = document.getElementById('posCat').value;
+      if (!cat) { showToast('請選擇這份是「美療」還是「非美療」'); return; }
       const btn = document.getElementById('posBtn');
       btn.disabled = true;
-      btn.innerHTML = '<span>匯入中...</span>';
+      btn.innerHTML = '<span>確認中...</span>';
+      const req = { branch: branch, category: cat, fileName: posParsed.fileName, rows: posParsed.rows, dataDate: document.getElementById('posDataDate').value };
+      // 先問伺服器會取代幾筆，再請管理員確認
+      api().withSuccessHandler(function (pv) {
+        const msg = '匯入「' + branch + '・' + cat + '」共 ' + pv.count + ' 筆。\n\n將取代：' + branch + '・' + cat + '（目前 ' + pv.sameCat + ' 筆）' +
+          (pv.legacy ? '\n舊資料（未分類）' + pv.legacy + ' 筆也會一併清除，請記得另一類別也要重新匯入。' : '') +
+          '\n\n' + branch + '的另一類別不會受影響。確定匯入？';
+        if (!confirm(msg)) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; return; }
+        btn.innerHTML = '<span>匯入中...</span>';
+        submitPosNow_(req, btn, branch, cat);
+      }).withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
+        .importPosCourses(Object.assign({ dryRun: true }, req));
+    }
+
+    function submitPosNow_(req, btn, branch, cat) {
       api()
         .withSuccessHandler(function (r) {
-          showToast('✅ 已匯入 ' + r.count + ' 筆（' + branch + '）' + (r.autoCreated ? '，並補建 ' + r.autoCreated + ' 位顧客資料' : ''));
+          showToast('✅ 已匯入 ' + r.count + ' 筆（' + branch + '・' + cat + '）' + (r.autoCreated ? '，並補建 ' + r.autoCreated + ' 位顧客資料' : ''));
           posParsed = null;
           loadAdmin();
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
-        .importPosCourses({ branch: branch, fileName: posParsed.fileName, rows: posParsed.rows,
-          dataDate: document.getElementById('posDataDate').value });
+        .importPosCourses(req);
     }
 
     // ---------- 主管總覽：未消耗療程 ----------
