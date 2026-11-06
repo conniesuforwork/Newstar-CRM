@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.3（處理中提示／防重複送出／課程照報表數字）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.4（未消耗療程支援「剩餘量」標題）</div>
   </div>
 
   <script>
@@ -2184,7 +2184,7 @@
 
     // ===================== 未消耗療程（POS） =====================
     let customerCourses = [];
-    let posBlocked = false;
+    let posBlocked = false, posCols = {}, posHeads = {};
 
     function loadCustomerCourses_(customer) {
       const box = document.getElementById('courseBox');
@@ -2269,6 +2269,7 @@
         reader.onload = function (e) {
           try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            posCols = {}; posHeads = {}; posBlocked = false;
             const rows = [];
             const tabs = {};
             let branch = '';
@@ -2296,8 +2297,13 @@
               };
               const c = { dup: col('重複'), no: col('單號'), date: col('日期'), status: col('狀態'), cid: col('編號', '客編'),
                 name: col('顧客', '姓名'), phone: col('手機'), big: col('項目(大)', '項目（大）'), mid: col('項目(中)', '項目（中）'),
-                small: col('項目(小)', '項目（小）'), kind: col('種類'), left: col('剩餘數', '剩餘堂', '剩餘次'),
+                small: col('項目(小)', '項目（小）'), kind: col('種類'), left: col('剩餘數', '剩餘量', '剩餘堂', '剩餘次'),
                 price: col('單價'), amount: col('剩餘費用', '剩餘金額') };
+              // 剩餘數的其他寫法：以「剩餘」開頭、而且不是費用／金額的那一欄
+              if (c.left < 0) c.left = h.findIndex(function (x) { return x.indexOf('剩餘') === 0 && !/費用|金額|價/.test(x); });
+              const colName = function (i) { let s = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+              posCols[tab] = c.left >= 0 ? colName(c.left) + ' 欄「' + h[c.left] + '」' : '';
+              posHeads[tab] = h.filter(Boolean).join('、');
               for (let i = hi + 1; i < aoa.length; i++) {
                 const r = aoa[i];
                 const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
@@ -2325,9 +2331,18 @@
                   ((adminData && adminData.clinics) || []).map(function (b) { return '<option' + (b === branch || (branch && branch.indexOf(b.replace(/診所$/, '')) !== -1) ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' +
                 (function () {
                   if (!rows.length) return '';
+                  // 哪些分頁找不到剩餘數這一欄
+                  const noCol = Object.keys(posCols).filter(function (t) { return !posCols[t]; });
+                  const used = Object.keys(posCols).filter(function (t) { return posCols[t]; }).map(function (t) { return posCols[t]; })
+                    .filter(function (x, i, a) { return a.indexOf(x) === i; });
+                  if (noCol.length) {
+                    posBlocked = true;
+                    return '<div class="hint"><b style="color:#9B3F2D;">⚠️ 這些分頁找不到「剩餘數」這一欄：' + noCol.map(esc).join('、') + '</b>' +
+                      '<br>檔案的標題有：' + esc(posHeads[noCol[0]]) + '<br>請把剩餘數那一欄的標題改成「剩餘數」或「剩餘量」後再匯入。</div>';
+                  }
                   const zero = rows.filter(function (r) { return !(Number(r.left) > 0); });
                   posBlocked = zero.length > rows.length * 0.2;      // 超過兩成是 0：一定是讀錯，不給匯入
-                  return '<div class="hint">有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' + (rows.length - zero.length) + ' 筆' +
+                  return '<div class="hint">剩餘數：讀取 <b>' + esc(used.join('、')) + '</b><br>有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' + (rows.length - zero.length) + ' 筆' +
                     (zero.length ? '<br><b style="color:#9B3F2D;">⚠️ 剩餘數是 0 或讀不到的有 ' + zero.length + ' 筆' + (posBlocked ? '，比例太高，不能匯入。' : '。') + '</b>' +
                       '<br>例如：' + zero.slice(0, 8).map(function (r) { return esc(r.tab + ' 第 ' + r.excelRow + ' 列 ' + r.name); }).join('、') +
                       (posBlocked ? '<br>請打開檔案點一格「剩餘數」：如果是公式（= 開頭），請先「複製 → 選擇性貼上 → 值」變成數字後再存檔匯入。' : '') : '') + '</div>';
@@ -4728,4 +4743,3 @@
   </script>
 </body>
 </html>
-
