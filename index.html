@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.2（未消耗療程分美療／非美療）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.3（處理中提示／防重複送出／課程照報表數字）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v42.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v42.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -882,6 +882,21 @@
 
     // 所有伺服器功能都經過 crmCall 驗證登入；寫法和 google.script.run 一樣
     let PREFETCH = {};
+    const INFLIGHT = {};
+    // 系統處理中：畫面最上方顯示提示條（有請求在跑就顯示，全部完成就收起來）
+    let busyCount = 0, busyTimer = null;
+    function busy_(d) {
+      busyCount = Math.max(busyCount + d, 0);
+      let bar = document.getElementById('busyBar');
+      if (!bar) {
+        document.body.insertAdjacentHTML('afterbegin', '<div id="busyBar" style="position:fixed; top:0; left:0; right:0; z-index:60; display:none; ' +
+          'background:#6E5A4E; color:#fff; text-align:center; font-size:14px; padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top, 0px));">⏳ 系統處理中…</div>');
+        bar = document.getElementById('busyBar');
+      }
+      clearTimeout(busyTimer);
+      if (busyCount > 0) busyTimer = setTimeout(function () { bar.style.display = 'block'; }, 300);   // 很快就完成的不閃一下
+      else bar.style.display = 'none';
+    }
     const SILENT_CALLS = { markChangesRead: 1, crmLogout: 1, logout: 1, adminFindTx: 1, fetchGoogleHolidays: 1, refreshCapacity: 1 };     // 背景動作，不用提示
     function api() {
       const st = { ok: null, fail: null };
@@ -903,12 +918,25 @@
             const isWrite = !/^(get|search|list|load|read)/.test(String(prop)) && !SILENT_CALLS[String(prop)] &&
               !args.some(function (a) { return a && typeof a === 'object' && a.dryRun; });
             const startedAt = Date.now();
+            // 同一個儲存動作還沒完成，再按不重複送出
+            if (isWrite && INFLIGHT[pk]) {
+              const keep = lastToastAt;
+              showToast('⏳ 還在處理上一次的動作，請稍候');
+              lastToastAt = keep;                       // 這個提示不算，完成時照樣顯示「✅ 已儲存」
+              return;
+            }
+            if (isWrite) INFLIGHT[pk] = true;
+            busy_(1);
             serverRun_('crmCall', [authToken, String(prop), args],
               function (r) {
+                busy_(-1);
+                delete INFLIGHT[pk];
                 if (st.ok) st.ok(r);
                 if (isWrite) setTimeout(function () { if (lastToastAt < startedAt) showToast('✅ 已儲存'); }, 400);
               },
               function (err) {
+                busy_(-1);
+                delete INFLIGHT[pk];
                 const msg = String(err && err.message || err);
                 if (/重新登入|已過期|已失效/.test(msg)) { doLogout_(msg.replace(/^.*?:\s*/, '')); return; }
                 if (/請先修改密碼/.test(msg)) { showPw_(true); return; }
@@ -2156,6 +2184,7 @@
 
     // ===================== 未消耗療程（POS） =====================
     let customerCourses = [];
+    let posBlocked = false;
 
     function loadCustomerCourses_(customer) {
       const box = document.getElementById('courseBox');
@@ -2184,7 +2213,7 @@
         const up = Object.keys(res.updated).map(function (b) { return b + ' ' + res.updated[b]; }).join('、');
         const total = customerCourses.reduce(function (a, c) { return a + c.estAmount; }, 0);
         box.innerHTML = '<div class="section-title" style="margin-bottom:4px;">📦　未使用課程 <span style="font-size:14px; color:var(--text-muted);">剩餘 ' + money(total) + '</span></div>' +
-          '<div class="hint" style="margin-top:0;">POS 資料日期：' + esc(up) + '，之後在 CRM 記錄的使用已自動扣除。點一下＝這次使用這項。</div>' +
+          '<div class="hint" style="margin-top:0;">依 POS 報表（資料日期：' + esc(up) + '）。點一下＝這次使用這項。</div>' +
           customerCourses.map(function (c, i) {
             return '<div class="candidate" style="margin:8px 0 0; padding:10px 12px;" data-i="' + i + '" onclick="useCourse(this.dataset.i)"><div class="info">' +
               '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.cat ? ' <span class="pay-tag">' + esc(c.cat) + '</span>' : '') + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
@@ -2245,6 +2274,7 @@
             let branch = '';
             wb.SheetNames.forEach(function (tab) {
               const aoa = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: false, defval: '' });
+              const aoaRaw = XLSX.utils.sheet_to_json(wb.Sheets[tab], { header: 1, raw: true, defval: '' });   // 數字欄讀實際數值，不受顯示格式影響
               let hi = -1;
               for (let i = 0; i < Math.min(aoa.length, 8); i++) {
                 const line = aoa[i].map(function (x) { return String(x).replace(/\s+/g, ''); });
@@ -2271,10 +2301,18 @@
               for (let i = hi + 1; i < aoa.length; i++) {
                 const r = aoa[i];
                 const g = function (k) { return c[k] >= 0 ? String(r[c[k]] == null ? '' : r[c[k]]).trim() : ''; };
+                // 數字：優先用 Excel 的實際數值；是文字的話，全形轉半形、去掉「堂」「,」等字
+                const num = function (k) {
+                  if (c[k] < 0) return '';
+                  const v = (aoaRaw[i] || [])[c[k]];
+                  if (typeof v === 'number') return String(v);
+                  const t = String(v == null ? '' : v).normalize('NFKC').replace(/[^\d.\-]/g, '');
+                  return t !== '' ? t : String(g(k)).normalize('NFKC').replace(/[^\d.\-]/g, '');
+                };
                 if (!g('name') && !g('phone')) continue;
                 rows.push({ tab: tab, dup: g('dup'), no: g('no'), date: g('date'), status: g('status'), cid: g('cid'), name: g('name'),
                   phone: g('phone'), big: g('big'), mid: g('mid'), small: g('small'), kind: g('kind'),
-                  left: g('left'), price: g('price'), amount: g('amount') });
+                  left: num('left'), price: num('price'), amount: num('amount'), excelRow: i + 1 });
                 tabs[tab] = (tabs[tab] || 0) + 1;
               }
             });
@@ -2285,9 +2323,15 @@
                 '<div class="hint">' + Object.keys(tabs).map(function (t) { return esc(t) + ' ' + tabs[t]; }).join('、') + '</div>' +
                 '<label>這份資料是哪一家診所</label><select id="posBranch"><option value="">請選擇</option>' +
                   ((adminData && adminData.clinics) || []).map(function (b) { return '<option' + (b === branch || (branch && branch.indexOf(b.replace(/診所$/, '')) !== -1) ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' +
-                (rows.length ? '<div class="hint">有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' +
-                  rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length + ' 筆' +
-                  (rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length < rows.length / 2 ? '　<b style="color:#9B3F2D;">⚠️ 大部分剩餘數是 0，欄位可能讀錯，請確認是 POS 匯出的明細</b>' : '') + '</div>' : '') +
+                (function () {
+                  if (!rows.length) return '';
+                  const zero = rows.filter(function (r) { return !(Number(r.left) > 0); });
+                  posBlocked = zero.length > rows.length * 0.2;      // 超過兩成是 0：一定是讀錯，不給匯入
+                  return '<div class="hint">有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' + (rows.length - zero.length) + ' 筆' +
+                    (zero.length ? '<br><b style="color:#9B3F2D;">⚠️ 剩餘數是 0 或讀不到的有 ' + zero.length + ' 筆' + (posBlocked ? '，比例太高，不能匯入。' : '。') + '</b>' +
+                      '<br>例如：' + zero.slice(0, 8).map(function (r) { return esc(r.tab + ' 第 ' + r.excelRow + ' 列 ' + r.name); }).join('、') +
+                      (posBlocked ? '<br>請打開檔案點一格「剩餘數」：如果是公式（= 開頭），請先「複製 → 選擇性貼上 → 值」變成數字後再存檔匯入。' : '') : '') + '</div>';
+                })() +
                 '<label>類別（只會取代同一家診所、同一類別的資料）</label><select id="posCat"><option value="">請選擇</option>' +
                   ['美療', '非美療'].map(function (k) {
                     const guess = /非美療/.test(file.name) ? '非美療' : /美療/.test(file.name) ? '美療' : '';
@@ -3232,6 +3276,7 @@
       if (!branch) { showToast('請選擇這份資料是哪一家診所'); return; }
       const cat = document.getElementById('posCat').value;
       if (!cat) { showToast('請選擇這份是「美療」還是「非美療」'); return; }
+      if (posBlocked) { showToast('剩餘數讀不到的太多，請先確認檔案（看預覽裡的說明）'); return; }
       const btn = document.getElementById('posBtn');
       btn.disabled = true;
       btn.innerHTML = '<span>確認中...</span>';
