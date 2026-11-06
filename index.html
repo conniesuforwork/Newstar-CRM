@@ -554,10 +554,10 @@
           </button>
         </div>
 
-        <button type="button" class="link-btn" id="toggleReassignBtn" style="margin-top:8px; display:none;" onclick="toggleReassignPanel()">🔒 更換諮詢師／診所（主管）</button>
+        <button type="button" class="link-btn" id="toggleReassignBtn" style="margin-top:8px; display:none;" onclick="toggleReassignPanel()">🔒 更換諮詢（美容）師／診所（主管）</button>
 
           <div id="reassignPanel" style="display:none; margin-top:10px; background:#FBFAF8; border:1.5px dashed var(--border); border-radius: var(--radius-md); padding:12px;">
-            <label style="margin-top:0;">新諮詢師</label>
+            <label style="margin-top:0;">新諮詢（美容）師</label>
             <input type="text" id="reassignConsultant" placeholder="留空表示不更改" list="staffList" autocomplete="off">
 
             <label>新所屬診所</label>
@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v41（加快跳轉／儲存提示／人員上線紀錄）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42（自動補建顧客／最近服務紀錄／未使用課程提示）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v41';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v42';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1191,12 +1191,14 @@
             '<div class="name">' + esc(c.name) + '</div>' +
             '<div class="meta">' +
               '<span class="tag birthday">🎂 ' + esc(c.birthday || '未填') + '</span>' +
-              '<span class="tag">📱 ' + esc(c.phone || '未填') + '</span>' +
+              (c.needPhone ? '<span class="tag" style="background:#F8DCD5; color:#9B3F2D;">📱 待補手機</span>' : '<span class="tag">📱 ' + esc(c.phone || '未填') + '</span>') +
               (c.branch ? '<span class="tag">🏥 ' + esc(c.branch) + '</span>' : '') +
               (c.grade ? '<span class="tag grade-' + esc(String(c.grade).toLowerCase()) + '">等級 ' + esc(c.grade) + '</span>' : '') +
               (c.lastYearGrade ? '<span class="tag">去年 ' + esc(c.lastYearGrade) + '</span>' : '') +
               (c.rfmStatus ? '<span class="tag ' + rfmTagClass(c.rfmStatus) + '">' + esc(c.rfmStatus) + '</span>' : '') +
             '</div>' +
+            (c.consultant ? '<div class="meta" style="margin-top:4px;">負責人：' + esc(c.consultant) + '</div>' : '<div class="meta" style="margin-top:4px;">負責人：（待主管指派）</div>') +
+            (c.recent ? '<div class="meta" style="margin-top:2px; font-size:13px;">最近服務：' + esc(c.recent) + '</div>' : '') +
           '</div>';
         div.onclick = function () { selectExistingCustomer(c, div); };
         box.appendChild(div);
@@ -1210,7 +1212,9 @@
 
       document.getElementById('confirmedBanner').style.display = 'flex';
       document.getElementById('confirmedText').innerHTML =
-        '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + esc(c.phone || '未填') + '）';
+        '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + (c.needPhone ? '<b style="color:#9B3F2D;">待補手機</b>' : esc(c.phone || '未填')) + '）' +
+        (c.recent ? '<br><span style="font-size:13px;">最近服務：' + esc(c.recent) + '</span>' : '') +
+        (c.needPhone ? '<br><span style="font-size:13px;">這位顧客是系統從櫃台日報補建的，還沒有手機。請按「＋ 新增顧客建檔」用同樣的姓名、生日填上手機，系統會自動合併。</span>' : '');
 
       goToTransaction_(c);
     }
@@ -1399,7 +1403,7 @@
         .withSuccessHandler(function (customer) {
           btn.disabled = false;
           btn.innerHTML = '<span>確認異動</span>';
-          showToast('已更新諮詢師／診所');
+          showToast('✅ 已更新諮詢（美容）師／診所');
           selectedCustomer = customer;
           perfStale = true;
           goToTransaction_(customer);
@@ -1862,6 +1866,13 @@
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
 
+      // 補建顧客資料
+      html += '<div class="card visible"><div class="section-title">🧹　補建顧客資料</div>' +
+        '<div class="hint" style="margin-top:0;">從未消耗療程、品項日報表、櫃台日報找出「有消費或課程、但沒有顧客資料」的顧客，一次補建。' +
+        '有手機的直接建檔；沒有手機的建成「待補手機」。已經有資料的不會重複。負責人留空，舊客進「待承接顧客」由主管指派。' +
+        '<br>之後匯入櫃台日報、品項日報表、未消耗療程時，系統也會自動補建。</div>' +
+        '<button type="button" class="add-item-btn" onclick="runBackfill_(true)">預覽</button><div id="bfBox"></div></div>';
+
       // 人員上線狀況
       html += '<div class="card visible"><div class="section-title">👀　人員上線狀況</div>' +
         '<div class="hint" style="margin-top:0;">🟢 線上＝5 分鐘內有操作。最後上線＝最後一次有操作的時間（有勾「記住我」自動登入的也算）。點人名看最近 30 次登入紀錄。</div>' +
@@ -2157,7 +2168,14 @@
           box.style.display = 'block';
           return;
         }
-        if (!customerCourses.length) return;
+        if (!customerCourses.length) {
+          const up0 = Object.keys(res.updated || {}).map(function (b) { return b + ' ' + res.updated[b]; }).join('、');
+          box.innerHTML = '<div class="hint" style="margin:0;">' + (res.denied ? '你的權限看不到未使用課程。' :
+            '📦 這位顧客目前沒有未使用課程' + (up0 ? '（POS 資料日期：' + esc(up0) + '）' : '（還沒有匯入未消耗療程）') + '。' +
+            (res.sameName ? '<br><b style="color:#9B3F2D;">POS 有同名顧客，但手機不同（' + res.sameName + ' 筆，手機 ' + esc(res.sameNamePhones.join('、')) + '），請確認這位顧客的手機是否正確。</b>' : '')) + '</div>';
+          box.style.display = 'block';
+          return;
+        }
         const up = Object.keys(res.updated).map(function (b) { return b + ' ' + res.updated[b]; }).join('、');
         const total = customerCourses.reduce(function (a, c) { return a + c.estAmount; }, 0);
         box.innerHTML = '<div class="section-title" style="margin-bottom:4px;">📦　未使用課程 <span style="font-size:14px; color:var(--text-muted);">剩餘 ' + money(total) + '</span></div>' +
@@ -2171,7 +2189,10 @@
               (c.byName ? '・<span style="color:#9B5F4D;">POS 無手機，依姓名比對</span>' : '') + '</div></div></div>';
           }).join('');
         box.style.display = 'block';
-      }).withFailureHandler(function () {}).getCustomerCourses(customer.phone, customer.name);
+      }).withFailureHandler(function (err) {
+        box.innerHTML = '<div class="hint" style="margin:0;">未使用課程讀取失敗：' + esc(err.message) + '</div>';
+        box.style.display = 'block';
+      }).getCustomerCourses(customer.phone, customer.name);
     }
 
     function useCourse(i) {
@@ -2256,7 +2277,11 @@
             box.innerHTML = rows.length
               ? '<div class="sub-panel">讀到 <b>' + rows.length + '</b> 筆、<b>' + Object.keys(tabs).length + '</b> 個分頁，未消耗金額約 <b>' + money(total) + '</b>' +
                 '<div class="hint">' + Object.keys(tabs).map(function (t) { return esc(t) + ' ' + tabs[t]; }).join('、') + '</div>' +
-                '<label>這份資料是哪一家診所</label><input type="text" id="posBranch" list="pfBranchList2" value="' + esc(branch) + '">' +
+                '<label>這份資料是哪一家診所</label><select id="posBranch"><option value="">請選擇</option>' +
+                  ((adminData && adminData.clinics) || []).map(function (b) { return '<option' + (b === branch || (branch && branch.indexOf(b.replace(/診所$/, '')) !== -1) ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' +
+                (rows.length ? '<div class="hint">有手機 ' + rows.filter(function (r) { return /^0?9\d{8}$/.test(String(r.phone).replace(/\D/g, '')); }).length + ' 筆、剩餘數大於 0 有 ' +
+                  rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length + ' 筆' +
+                  (rows.filter(function (r) { return Number(String(r.left).replace(/[,\s]/g, '')) > 0; }).length < rows.length / 2 ? '　<b style="color:#9B3F2D;">⚠️ 大部分剩餘數是 0，欄位可能讀錯，請確認是 POS 匯出的明細</b>' : '') + '</div>' : '') +
                 '<label>POS 資料截止日（從 POS 匯出的那一天）</label><input type="date" id="posDataDate" value="' + localDateStr() + '">' +
                 '<div class="hint">這天之後在 CRM 記錄的「服務（不收費）」，會自動從剩餘次數扣掉。</div>' +
                 '<datalist id="pfBranchList2">' + adminData.branches.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join('') + '</datalist>' +
@@ -2617,6 +2642,24 @@
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
     }
 
+    // ---------- 管理員：補建顧客資料 ----------
+    function runBackfill_(dryRun) {
+      const box = document.getElementById('bfBox');
+      if (!dryRun && !confirm('確定補建這些顧客資料？')) return;
+      box.innerHTML = '<div class="empty">' + (dryRun ? '比對中…（顧客多時需要一點時間）' : '補建中…') + '</div>';
+      api().withSuccessHandler(function (s) {
+        const src = Object.keys(s.bySrc || {}).map(function (k) { return k + ' ' + s.bySrc[k]; }).join('、');
+        box.innerHTML = '<div class="sub-panel">' + (s.done ? '<b>✅ 補建完成</b><br>' : '') +
+          '有手機、直接建檔：<b>' + s.withPhone + '</b> 位' + (src ? '（來源：' + esc(src) + '）' : '') +
+          '<br>沒有手機、建成「待補手機」：<b>' + s.pending + '</b> 位' +
+          '<br>幫原本「待補手機」的顧客補上手機：<b>' + s.fill + '</b> 位' +
+          (s.sample && s.sample.length ? '<div class="row-meta" style="margin-top:6px;">例如：' + s.sample.map(esc).join('、') + '</div>' : '') +
+          (dryRun && (s.withPhone || s.pending || s.fill) ? '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="runBackfill_(false)"><span>確認補建</span></button>' :
+            dryRun ? '<div class="row-meta" style="margin-top:6px;">目前沒有需要補建的顧客。</div>' : '') + '</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .backfillCustomers({ dryRun: dryRun });
+    }
+
     // ---------- 管理員：人員上線狀況 ----------
     let onData = null, onBranch = '';
     function loadOnline_() {
@@ -2894,7 +2937,7 @@
       const box = document.getElementById('historyBox');
       if (box.innerHTML) { box.innerHTML = ''; return; }          // 再按一次收起來
       const ph = selectedCustomer && selectedCustomer.phone;
-      if (!ph) { showToast('請先選擇顧客'); return; }
+      if (!ph && !(selectedCustomer && selectedCustomer.custKey)) { showToast('請先選擇顧客'); return; }
       box.innerHTML = '<div class="empty">讀取中...</div>';
       const tag = { '消費': 'pay-tag', '諮詢': 'dept-tag', '關懷': 'new-tag' };
       api().withSuccessHandler(function (list) {
@@ -2903,7 +2946,7 @@
             (e.who ? '　' + esc(e.who) : '') + (e.branch ? '　' + esc(e.branch) : '') + '</div><div style="font-size:14px;">' + esc(e.text) + '</div></div>';
         }).join('') : '<div class="empty">這位顧客還沒有任何紀錄。</div>') + '<div class="hint">最多顯示最近 40 筆。</div></div>';
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-        .getCustomerHistory(ph);
+        .getCustomerHistory(ph, selectedCustomer && selectedCustomer.custKey);
     }
 
     // ---------- 管理員：公休與國定假日 ----------
@@ -3175,14 +3218,14 @@
     function submitPos() {
       if (!posParsed) return;
       const branch = document.getElementById('posBranch').value.trim();
-      if (!branch) { showToast('請填這份資料是哪一家診所'); return; }
+      if (!branch) { showToast('請選擇這份資料是哪一家診所'); return; }
       if (!confirm('會用這份檔案取代「' + branch + '」目前所有的未消耗療程資料，確定匯入？')) return;
       const btn = document.getElementById('posBtn');
       btn.disabled = true;
       btn.innerHTML = '<span>匯入中...</span>';
       api()
         .withSuccessHandler(function (r) {
-          showToast('已匯入 ' + r.count + ' 筆（' + branch + '）');
+          showToast('✅ 已匯入 ' + r.count + ' 筆（' + branch + '）' + (r.autoCreated ? '，並補建 ' + r.autoCreated + ' 位顧客資料' : ''));
           posParsed = null;
           loadAdmin();
         })
