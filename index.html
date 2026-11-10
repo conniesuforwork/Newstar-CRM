@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v42.4（未消耗療程支援「剩餘量」標題）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v43（匯入可復原／拖放區）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v42.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v43';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1894,6 +1894,12 @@
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
 
+      // 最近的匯入（可以復原）
+      html += '<div class="card visible"><div class="section-title">↩️　最近的匯入（可以復原）</div>' +
+        '<div class="hint" style="margin-top:0;">保留最近 7 天的匯入。匯錯檔案、選錯診所或類別時，按「復原」就會回到那次匯入之前的樣子。' +
+        '（自動補建的顧客、新客歸屬不會跟著復原。）</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadBatches_()">載入</button><div id="bBox"></div></div>';
+
       // 補建顧客資料
       html += '<div class="card visible"><div class="section-title">🧹　補建顧客資料</div>' +
         '<div class="hint" style="margin-top:0;">從未消耗療程、品項日報表、櫃台日報找出「有消費或課程、但沒有顧客資料」的顧客，一次補建。' +
@@ -2086,6 +2092,7 @@
         '<div class="hint">完整紀錄在試算表的「操作紀錄」分頁，會永久保留。</div></div>';
 
       document.getElementById('adminBody').innerHTML = html;
+      enhanceFileInputs_(document.getElementById('adminBody'));
       if (adminTempNotice) {
         const t = adminTempNotice;
         adminTempNotice = null;
@@ -2710,6 +2717,84 @@
         }
       }).withFailureHandler(function (err) { showToast(err.message); })
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
+    }
+
+    // ---------- 管理員：最近的匯入與復原 ----------
+    let bList = [];
+    function loadBatches_() {
+      const box = document.getElementById('bBox');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (list) {
+        bList = list;
+        box.innerHTML = list.length ? list.map(function (b, i) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(b.time) + '　' + esc(b.type) + '</span>' +
+            (b.undone ? '<span class="pay-tag">已復原（' + esc(b.undoneAt || '') + '）</span>' : '<button class="mini-btn grey" data-i="' + i + '" onclick="undoBatch_(this.dataset.i)">↩️ 復原</button>') + '</div>' +
+            '<div class="row-meta">' + esc(b.desc) + '<br>' + esc(b.counts) + (b.by ? '　匯入：' + esc(b.by) : '') + '</div></div>';
+        }).join('') : '<div class="empty">最近 7 天沒有匯入紀錄（這個功能更新之後才開始記錄）。</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).listImportBatches();
+    }
+    function undoBatch_(i) {
+      const b = bList[Number(i)];
+      api().withSuccessHandler(function (r) {
+        const rp = r.report;
+        const msg = '復原「' + b.type + '：' + b.desc + '」（' + b.time + '）\n\n會刪除這次匯入新增的 ' + rp.del + ' 列，還原 ' + rp.restore + ' 列。' +
+          (rp.missing ? '\n有 ' + rp.missing + ' 列已經找不到（之後被修改或刪除），會略過。' : '') +
+          (rp.changed.length ? '\n\n⚠️ 這些資料在匯入後又被修改過，復原會蓋掉後來的修改：\n' + rp.changed.slice(0, 10).join('、') + (rp.changed.length > 10 ? '…等 ' + rp.changed.length + ' 筆' : '') : '') +
+          '\n\n確定復原？';
+        if (!confirm(msg)) return;
+        api().withSuccessHandler(function (r2) {
+          showToast('✅ 已復原：刪除 ' + r2.report.del + ' 列、還原 ' + r2.report.restore + ' 列');
+          perfStale = true;
+          loadBatches_();
+        }).withFailureHandler(function (err) { showToast(err.message); }).undoImportBatch({ id: b.id });
+      }).withFailureHandler(function (err) { showToast(err.message); }).undoImportBatch({ id: b.id, dryRun: true });
+    }
+
+    // ---------- 匯入檔案：明顯的拖放區 ----------
+    // 把管理畫面裡的「選擇檔案」換成大塊拖放區：拖到上面變綠、放開後顯示檔名和大小；拖錯格式直接提醒
+    function enhanceFileInputs_(root) {
+      root.querySelectorAll('input[type="file"]').forEach(function (inp) {
+        if (inp.dataset.dz) return;
+        inp.dataset.dz = '1';
+        inp.style.display = 'none';
+        const dz = document.createElement('div');
+        dz.className = 'dropzone';
+        dz.style.cssText = 'border:2px dashed var(--border, #D9CFC4); border-radius:14px; padding:16px 12px; text-align:center; cursor:pointer; ' +
+          'color:var(--text-muted); font-size:15px; margin-top:4px; transition:background .15s, border-color .15s;';
+        const idle = '📂 把檔案拖到這裡，或<b style="color:var(--text);">點這裡選擇檔案</b><br><span style="font-size:13px;">Excel 檔（.xlsx、.xls）</span>';
+        dz.innerHTML = idle;
+        inp.parentNode.insertBefore(dz, inp);
+        const on = function (yes) {
+          dz.style.background = yes ? '#E6ECE1' : '';
+          dz.style.borderColor = yes ? '#7E9A72' : '';
+          if (yes) dz.innerHTML = '<b style="color:#3F5A35;">⬇️ 放開就上傳</b>';
+        };
+        dz.addEventListener('click', function () { inp.click(); });
+        ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); on(true); }); });
+        dz.addEventListener('dragleave', function (e) { e.preventDefault(); on(false); dz.innerHTML = dz.dataset.done || idle; });
+        dz.addEventListener('drop', function (e) {
+          e.preventDefault();
+          on(false);
+          const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (!f) { dz.innerHTML = dz.dataset.done || idle; return; }
+          if (!/\.(xlsx|xls)$/i.test(f.name)) {
+            dz.innerHTML = '<b style="color:#9B3F2D;">⚠️ 這裡只能匯入 Excel 檔（.xlsx、.xls），你拖的是「' + esc(f.name) + '」</b>';
+            return;
+          }
+          const dt = new DataTransfer();
+          dt.items.add(f);
+          inp.files = dt.files;
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        inp.addEventListener('change', function () {
+          const f = inp.files && inp.files[0];
+          if (!f) return;
+          const size = f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB';
+          dz.dataset.done = '<b style="color:#3F5A35;">✅ 已選擇：' + esc(f.name) + '（' + size + '）</b><br><span style="font-size:13px;">⏳ 讀取中，預覽會出現在下方…　要換檔案就再拖一次或點這裡</span>';
+          dz.innerHTML = dz.dataset.done;
+          dz.style.borderStyle = 'solid';
+        });
+      });
     }
 
     // ---------- 管理員：補建顧客資料 ----------
