@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v43（匯入可復原／拖放區）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v44（當日業績／本月到診新客）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v43';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v44';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3611,7 +3611,8 @@
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
       html += '<div class="card visible"><div class="kpi-grid">' +
-        kpiBox('新客業績', money(s.ns), '有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 筆' +
+        kpiBox('新客業績', money(s.ns), (d.newVisits !== undefined ? '本月新客（到診）<b>' + d.newVisits + '</b> 位<br>' : '') +
+          '有消費新客 <b>' + s.nc + '</b> 位・成交 ' + s.nd + ' 筆' +
           '<br>本月新客 ' + money(s.nsNew || 0) + '・前期延續 ' + money(s.ns - (s.nsNew || 0)) + dealsNote_(s.nc, s.nd, s.ndCont || 0, true)) +
         kpiBox('舊客業績', money(s.os), '舊客 ' + s.oc + ' 位・成交 ' + s.od + ' 筆' + dealsNote_(s.oc, s.od, 0, false)) +
         kpiBox('成交筆數', s.c + ' 筆', '平均客單 ' + money(s.c ? s.s / s.c : 0) + '<br>重複消費 ' + s.rc + ' 位<br>服務（不收費）' + s.sv + ' 人次') +
@@ -3620,6 +3621,9 @@
         (d.splitStat && d.splitStat.total ? '<div class="hint">財務拆帳完成度：<b>' + d.splitStat.done + ' / ' + d.splitStat.total + '</b> 張單（' +
           Math.round(d.splitStat.done / d.splitStat.total * 100) + '%）' + (d.splitStat.done < d.splitStat.total ? '，未拆帳的單業績暫依櫃台日報計算' : '，本月業績分配已定案') + '</div>' : '') +
         '</div>';
+
+      // 當日業績
+      html += '<div class="card visible" id="dailyCard"><div class="section-title">📅　當日業績</div><div class="empty">載入中...</div></div>';
 
       // 店的進度燈號
       if (d.storeLights) {
@@ -3746,6 +3750,7 @@
       html += targetCardHtml();
       document.getElementById('perfBody').innerHTML = html;
       loadClinicTargets_(d.monthKey);
+      loadDaily_('');
       if (document.getElementById('mkBox')) { renderMkCtl_(); document.getElementById('mkBox').innerHTML = '<div class="empty">選好區間後按「查詢」。</div>'; }
       loadTargets();
       loadTakeoverCards_();
@@ -4191,6 +4196,40 @@
     function ltBadge_(l, label) {
       if (!l || !l.level) return '';
       return '<span class="lt pace-' + l.level + '">' + LT_ICON[l.level] + ' ' + label + (l.final ? '' : ' ' + Math.round(l.pct * 100) + '%') + '</span>';
+    }
+
+    // ---------- 當日業績 ----------
+    function loadDaily_(day) {
+      const card = document.getElementById('dailyCard');
+      if (!card) return;
+      const body = card.querySelector('.dl-body');
+      if (body) body.style.opacity = '0.5';
+      api().withSuccessHandler(function (r) { renderDaily_(r); })
+        .withFailureHandler(function (err) { card.innerHTML = '<div class="section-title">📅　當日業績</div><div class="empty">' + esc(err.message) + '</div>'; })
+        .getDailyReport({ day: day, scope: currentScope_() });
+    }
+    function renderDaily_(r) {
+      const card = document.getElementById('dailyCard');
+      if (!card) return;
+      const order = ['現金', '匯款', '刷卡', '分期'];
+      const payLine = function (x) {
+        const keys = order.concat(Object.keys(x.pay).filter(function (k) { return order.indexOf(k) === -1; }));
+        return keys.map(function (k) { return k + ' ' + money(x.pay[k] || 0); }).join('｜') + (x.pending ? '｜付款方式未填 ' + money(x.pending) : '');
+      };
+      const block = function (x, title) {
+        return '<div class="sub-panel" style="margin:8px 0 0;">' + (title ? '<b>' + esc(title) + '</b><br>' : '') +
+          '當日營收 <b style="font-size:18px;">' + money(x.revenue) + '</b>' +
+          '<div class="row-meta">' + payLine(x) + '</div>' +
+          '<div style="margin-top:4px;">新客 <b>' + x.newToday + '</b> 位｜新客成交 <b>' + x.dealToday + (x.onlineToday ? '＋' + x.onlineToday + '</b>（線上成交）' : '</b>') + '</div>' +
+          '<div class="row-meta">當月累計 ' + money(x.monthTotal) + (x.rate !== null && x.rate !== undefined ? '｜當月完成率 <b>' + (Math.round(x.rate * 1000) / 10) + '%</b>' : '') + '</div>' +
+          '<div class="row-meta">本月到 ' + esc(r.day.slice(5).replace('-', '/')) + '：新客（到診）' + x.newVisits + ' 位｜舊客（有消費）' + x.oldPaid + ' 位｜有消費總人數 ' + (x.newPaid + x.oldPaid) + ' 位</div>' +
+          (x.hasSource === false ? '<div class="row-meta" style="color:#9B3F2D;">這個月還沒有匯入新客來源明細表，新客數會是 0</div>' : '') + '</div>';
+      };
+      card.innerHTML = '<div class="section-title" style="justify-content:space-between;">📅　當日業績' +
+        '<input type="date" value="' + esc(r.day) + '" style="width:auto; padding:6px 10px; font-size:14px;" onchange="loadDaily_(this.value)"></div>' +
+        '<div class="dl-body"><div class="row-meta">' + esc(r.day.replace(/-/g, '/')) + '（' + esc(r.weekday) + '）</div>' +
+        (r.total ? block(r.total, '集團合計') : '') + r.rows.map(function (x) { return block(x, r.rows.length > 1 || !r.total ? x.branch : ''); }).join('') +
+        '<div class="hint">舊客、總人數只算「有消費」的人，櫃台自己數的來客（含只做療程、沒付款的）不在系統裡，數字會比較少。</div></div>';
     }
 
     // ---------- 行銷新客分析（可選區間、比較、每月趨勢、匯出 Excel） ----------
