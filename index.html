@@ -466,6 +466,10 @@
 
           <label>顧客備註</label>
           <textarea id="newNote" placeholder="膚質/過敏史/偏好等備註"></textarea>
+          <div id="newTestWrap" style="display:none;">
+            <label>顧客類型（只有管理員看得到）</label>
+            <select id="newIsTest"><option value="">一般顧客</option><option value="1">🧪 測試顧客（人員練習用，不算業績）</option></select>
+          </div>
 
           <button class="primary-btn" id="createCustomerBtn" style="margin-top:18px;" onclick="createCustomer()">
             <span>建立顧客檔案</span>
@@ -816,7 +820,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v46（部門主管／測試課程扣堂數）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v46.1（管理員可設定測試顧客）</div>
   </div>
 
   <script>
@@ -836,7 +840,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v46';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v46.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1105,6 +1109,8 @@
       api()
         .withSuccessHandler(function (u) {
           perfUser = u;
+          const tw = document.getElementById('newTestWrap');
+          if (tw) tw.style.display = u.sysAdmin ? 'block' : 'none';          // 測試顧客選項：只有管理員
           // 網頁和後端版本不一致：提醒重新整理或更新 index.html
           if (u.serverVersion && u.serverVersion !== FRONT_VERSION && !document.getElementById('verWarn')) {
             document.body.insertAdjacentHTML('afterbegin', '<div id="verWarn" style="position:sticky; top:0; z-index:50; background:#FFF1CC; color:#7A5B00; padding:10px 14px; font-size:14px; text-align:center;">' +
@@ -1243,7 +1249,8 @@
           '🧪 <b>這是測試顧客</b>，資料不會算進業績。收費單號可以不填，系統會自動編號（TEST-001…）。</div>' : '') +
         '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + (c.needPhone ? '<b style="color:#9B3F2D;">待補手機</b>' : esc(c.phone || '未填')) + '）' +
         (c.recent ? '<br><span style="font-size:13px;">最近服務：' + esc(c.recent) + '</span>' : '') +
-        (c.needPhone ? '<br><span style="font-size:13px;">這位顧客是系統從櫃台日報補建的，還沒有手機。請按「＋ 新增顧客建檔」用同樣的姓名、生日填上手機，系統會自動合併。</span>' : '');
+        (c.needPhone ? '<br><span style="font-size:13px;">這位顧客是系統從櫃台日報補建的，還沒有手機。請按「＋ 新增顧客建檔」用同樣的姓名、生日填上手機，系統會自動合併。</span>' : '') +
+        (perfUser && perfUser.sysAdmin ? '<br><a href="#" style="font-size:13px;" onclick="toggleTestCust_(); return false;">' + (c.isTest ? '取消測試顧客' : '🧪 設為測試顧客') + '</a>' : '');
 
       goToTransaction_(c);
     }
@@ -1265,7 +1272,8 @@
         source: document.getElementById('newSource').value,
         doctor: document.getElementById('newDoctor').value.trim(),
         consultant: document.getElementById('newConsultant').value.trim(),
-        note: document.getElementById('newNote').value.trim()
+        note: document.getElementById('newNote').value.trim(),
+        isTest: !!(perfUser && perfUser.sysAdmin && document.getElementById('newIsTest').value)
       };
 
       if (!payload.name) { showToast('請輸入顧客姓名'); return; }
@@ -2730,6 +2738,29 @@
         }
       }).withFailureHandler(function (err) { showToast(err.message); })
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
+    }
+
+    // 管理員：在顧客資料卡直接設定／取消測試顧客
+    function toggleTestCust_() {
+      const c = selectedCustomer;
+      if (!c) return;
+      const toTest = !c.isTest;
+      const go = function () {
+        api().withSuccessHandler(function (r) {
+          c.isTest = r.isTest;
+          showToast(r.isTest ? '🧪 已設為測試顧客' : '已取消測試顧客');
+          perfStale = true;
+          selectExistingCustomer(c, null);
+        }).withFailureHandler(function (err) { showToast(err.message); })
+          .setCustomerTest({ phone: c.phone, name: c.name, test: toTest });
+      };
+      if (!toTest) { if (confirm('取消「' + c.name + '」的測試顧客設定？之後她的消費會算進業績。')) go(); return; }
+      api().withSuccessHandler(function (r) {
+        const msg = r.count ? '⚠️ 這位顧客有 ' + r.count + ' 筆消費、共 ' + money(r.sum) + '。\n設為測試顧客後，這些業績會從所有報表中移除。\n\n確定「' + c.name + '」是測試顧客嗎？'
+          : '把「' + c.name + '」設為測試顧客？她的消費、關懷、諮詢都不會算進業績。';
+        if (confirm(msg)) go();
+      }).withFailureHandler(function (err) { showToast(err.message); })
+        .setCustomerTest({ phone: c.phone, name: c.name, test: true, dryRun: true });
     }
 
     // ---------- 管理員：測試顧客 ----------
