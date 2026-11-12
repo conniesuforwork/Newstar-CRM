@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v45（🧪 測試顧客）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v46（部門主管／測試課程扣堂數）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v45';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v46';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1112,7 +1112,7 @@
           }
           // 背景預先載入「我的業績」：切過去時先顯示這份，再更新
           setTimeout(function () {
-            const v = u.group ? '__team__' : u.name;
+            const v = (u.group || u.deptHead) ? '__team__' : u.name;
             const team = v.indexOf('__') === 0;
             const ck = 'crm_perf_' + u.name + '|' + (team ? 'T|' + teamMonth + '||' + teamDept : 'P|' + v);
             const run = api().withSuccessHandler(function (d) { try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {} }).withFailureHandler(function () {});
@@ -1120,7 +1120,7 @@
           }, 1500);
           // 集團主管預設看集團總覽；分店主管預設看自己的診所
           // 集團主管預設看集團總覽；分店主管平常和諮詢師一樣，先看自己的畫面
-          viewAs = u.group ? '__team__' : u.name;
+          viewAs = (u.group || u.deptHead) ? '__team__' : u.name;
           document.getElementById('perfStatusCard').classList.remove('visible');
           if (u.admin) document.getElementById('txMeBtn').style.display = 'inline';
           document.getElementById('toggleReassignBtn').style.display = u.admin ? 'inline-block' : 'none';
@@ -1635,9 +1635,15 @@
 
     // 主管的切換選單：第一個選項是全店總覽
     function whoSelect_(current) {
-      if (!(perfUser && perfUser.admin && perfUser.staff.length)) return '👤 <b>' + esc(current) + '</b>';
+      if (!(perfUser && (perfUser.admin || perfUser.deptHead) && perfUser.staff.length)) return '👤 <b>' + esc(current) + '</b>';
       return '<select onchange="switchViewAs(this.value)" style="width:auto; padding:8px 34px 8px 12px; font-size:15px;">' +
-        (perfUser.group
+        (perfUser.deptHead
+          ? '<option value="__team__"' + (current === '__team__' ? ' selected' : '') + '>📊 ' + esc(perfUser.dept) + '｜兩店合計</option>' +
+            perfUser.branches.map(function (b) {
+              const v = '__scope__:' + b;
+              return '<option value="' + esc(v) + '"' + (current === v ? ' selected' : '') + '>🏥 ' + esc(perfUser.dept) + '｜' + esc(b) + '</option>';
+            }).join('')
+          : perfUser.group
           ? '<option value="__team__"' + (current === '__team__' ? ' selected' : '') + '>📊 集團總覽</option>' +
             perfUser.branches.map(function (b) {
               const v = '__scope__:' + b;
@@ -3596,7 +3602,7 @@
     }
 
     function goManagerView() {
-      switchViewAs(perfUser.group ? '__team__' : '__scope__:' + perfUser.branch);
+      switchViewAs((perfUser.group || perfUser.deptHead) ? '__team__' : '__scope__:' + perfUser.branch);
     }
 
     function pctOf_(a, b) { return b ? Math.round(a / b * 100) : null; }
@@ -3631,13 +3637,14 @@
 
       html += '<div class="card visible"><div class="row-2" style="align-items:end;">' +
         '<div><label style="margin-top:0;">查看月份</label><input type="month" value="' + d.monthKey + '" onchange="teamMonth=this.value; loadPerf();"></div>' +
+        (d.deptHead ? '<div><label style="margin-top:0;">部門</label><div style="padding:10px 0;"><b>' + esc(d.dept) + '</b>（部門主管只看自己的部門）</div></div></div>' :
         '<div><label style="margin-top:0;">部門</label><select onchange="teamDept=this.value; loadPerf();">' +
           ['', '諮詢部', '美容部'].map(function (v) {
             return '<option value="' + v + '"' + (d.dept === v ? ' selected' : '') + '>' + (v || '全部部門') + '</option>';
-          }).join('') + '</select></div></div>' +
+          }).join('') + '</select></div></div>') +
         '<div class="hint">點下方任一位人員可看她的明細</div></div>';
 
-      html += reportCardHtml_(d.scope ? '店月報' : '集團月報', '下載' + (d.scope ? '「' + esc(d.scope) + '」店月報' : '集團月報'),
+      if (!d.deptHead) html += reportCardHtml_(d.scope ? '店月報' : '集團月報', '下載' + (d.scope ? '「' + esc(d.scope) + '」店月報' : '集團月報'),
         d.scope ? { type: 'store', branch: d.scope } : { type: 'group' }, d.monthKey,
         d.scope ? '內容：全店總覽、每位人員業績、療程類別、重複消費、評論、關懷、全店消費明細。'
                 : '內容：集團總覽、各診所比較、每位人員業績、療程類別、重複消費、評論、關懷、全集團消費明細。');
@@ -3648,9 +3655,10 @@
       html += '<div class="card visible hero"><div class="label">' + esc(d.monthLabel) + '　' + esc(d.scopeLabel) + '業績</div>' +
         '<div class="big">' + money(s.s) + '</div>' +
         (t.total ? '<div class="progress"><div style="width:' + Math.min(pctOf_(s.s, t.total), 100) + '%"></div></div>' +
-          '<div class="hint">' + esc(d.scopeLabel) + '目標 <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
+          '<div class="hint">' + esc(d.scopeLabel) + '目標' + (d.dept ? '（個人目標加總）' : '') + ' <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
           (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + (d.scope ? ' 個工作天' : ' 天') : '') : '') + '</div>'
           : '<div class="hint">尚未設定本月目標</div>') +
+        (d.noTargetCount ? '<div class="hint" style="color:#9B3F2D;">⚠️ ' + d.noTargetCount + ' 位人員還沒設個人目標，達成率可能偏高</div>' : '') +
         '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth +
         (d.otherSales ? '<br>其中非個人業績（員購、行銷配合、未建檔人員）' + money(d.otherSales) + '，不列入個人排名' : '') + '</div></div>';
 
@@ -3666,8 +3674,8 @@
           Math.round(d.splitStat.done / d.splitStat.total * 100) + '%）' + (d.splitStat.done < d.splitStat.total ? '，未拆帳的單業績暫依櫃台日報計算' : '，本月業績分配已定案') + '</div>' : '') +
         '</div>';
 
-      // 當日業績
-      html += '<div class="card visible" id="dailyCard"><div class="section-title">📅　當日業績</div><div class="empty">載入中...</div></div>';
+      // 當日業績（部門主管不顯示）
+      if (!d.deptHead) html += '<div class="card visible" id="dailyCard"><div class="section-title">📅　當日業績</div><div class="empty">載入中...</div></div>';
 
       // 店的進度燈號
       if (d.storeLights) {
@@ -3685,8 +3693,8 @@
           '<div id="mkCtl"></div><div id="mkBox"><div class="empty">載入中...</div></div></div>';
       }
 
-      // 對帳
-      html += '<div class="card visible"><div class="section-title">🧮　對帳（系統業績 vs 櫃台日報）</div>' +
+      // 對帳（部門主管不顯示）
+      if (!d.deptHead) html += '<div class="card visible"><div class="section-title">🧮　對帳（系統業績 vs 櫃台日報）</div>' +
         '<div class="hint" style="margin-top:0;">總額對不上時，按「開始對帳」，看是哪幾筆造成差額。</div>' +
         (d.scope ? '' : '<label>診所</label><select id="rcBranch">' + (perfUser.branches || []).map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select>') +
         '<button type="button" class="add-item-btn" data-m="' + esc(d.monthKey) + '" data-b="' + esc(d.scope || '') + '" onclick="loadReconcile_(this.dataset.m, this.dataset.b || document.getElementById(\'rcBranch\').value)">開始對帳</button>' +
@@ -3789,13 +3797,17 @@
             (p.shareGroup !== undefined ? '　佔集團：業績 ' + ratioPct_(p.shareGroup) + '、現金 ' + ratioPct_(p.cashShareGroup) : '') + '</div></div>';
         }).join('') : '<div class="empty">這個月還沒有業績資料。</div>') + '</div>';
 
-      html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
-      html += '<div class="card visible" id="clinicTargetCard"><div class="section-title">🏥　診所業績目標</div><div class="empty">載入中...</div></div>';
-      html += targetCardHtml();
+      // 部門主管只看業績和達成：不顯示課程統計、承接、待承接、目標設定
+      if (!d.deptHead) {
+        html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
+        html += '<div class="card visible" id="clinicTargetCard"><div class="section-title">🏥　診所業績目標</div><div class="empty">載入中...</div></div>';
+        html += targetCardHtml();
+      }
       document.getElementById('perfBody').innerHTML = html;
+      if (document.getElementById('mkBox')) { renderMkCtl_(); document.getElementById('mkBox').innerHTML = '<div class="empty">選好區間後按「查詢」。</div>'; }
+      if (d.deptHead) return;
       loadClinicTargets_(d.monthKey);
       loadDaily_('');
-      if (document.getElementById('mkBox')) { renderMkCtl_(); document.getElementById('mkBox').innerHTML = '<div class="empty">選好區間後按「查詢」。</div>'; }
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
