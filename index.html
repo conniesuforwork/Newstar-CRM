@@ -820,7 +820,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v46.1（管理員可設定測試顧客）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v47（存檔加速／修改顧客資料與紀錄）</div>
   </div>
 
   <script>
@@ -840,7 +840,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v46.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v47';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1250,7 +1250,9 @@
         '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + (c.needPhone ? '<b style="color:#9B3F2D;">待補手機</b>' : esc(c.phone || '未填')) + '）' +
         (c.recent ? '<br><span style="font-size:13px;">最近服務：' + esc(c.recent) + '</span>' : '') +
         (c.needPhone ? '<br><span style="font-size:13px;">這位顧客是系統從櫃台日報補建的，還沒有手機。請按「＋ 新增顧客建檔」用同樣的姓名、生日填上手機，系統會自動合併。</span>' : '') +
-        (perfUser && perfUser.sysAdmin ? '<br><a href="#" style="font-size:13px;" onclick="toggleTestCust_(); return false;">' + (c.isTest ? '取消測試顧客' : '🧪 設為測試顧客') + '</a>' : '');
+        (perfUser && (perfUser.admin || perfUser.sysAdmin || c.consultant === perfUser.name) ? '<br><a href="#" style="font-size:13px;" onclick="openCustEdit_(); return false;">✏️ 修改顧客資料</a>' : '') +
+        (perfUser && perfUser.sysAdmin ? '　<a href="#" style="font-size:13px;" onclick="toggleTestCust_(); return false;">' + (c.isTest ? '取消測試顧客' : '🧪 設為測試顧客') + '</a>' : '') +
+        '<div id="custEditBox"></div>';
 
       goToTransaction_(c);
     }
@@ -2878,6 +2880,71 @@
       });
     }
 
+    // ---------- ✏️ 修改顧客資料 ----------
+    function openCustEdit_() {
+      const c = selectedCustomer, box = document.getElementById('custEditBox');
+      if (!c || !box) return;
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      const v = function (x) { return esc(x || ''); };
+      const bd = String(c.birthday || '').replace(/\//g, '-').replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/, function (m, y, mo, d) { return y + '-' + mo.padStart(2, '0') + '-' + d.padStart(2, '0'); });
+      box.innerHTML = '<div class="sub-panel" style="margin-top:8px; text-align:left;">' +
+        '<label style="margin-top:0;">姓名</label><input type="text" id="ceName" value="' + v(c.name) + '">' +
+        '<div class="row-2"><div><label>生日</label><input type="date" id="ceBirthday" value="' + v(bd) + '"></div>' +
+        '<div><label>手機</label><input type="text" id="cePhone" inputmode="numeric" value="' + v(c.needPhone ? '' : c.phone) + '"></div></div>' +
+        '<div class="hint" style="margin-top:2px;">改手機會連同她的消費、關懷、諮詢紀錄一起改；新手機如果已經是別的顧客，系統會擋下並提醒。</div>' +
+        '<div class="row-2"><div><label>管道來源</label><input type="text" id="ceSource" value="' + v(c.source) + '"></div>' +
+        '<div><label>偏好／指定醫師</label><input type="text" id="ceDoctor" value="' + v(c.doctor) + '"></div></div>' +
+        '<label>備註</label><textarea id="ceNote">' + v(c.note) + '</textarea>' +
+        '<button type="button" class="primary-btn" id="ceBtn" style="margin-top:10px; box-shadow:none;" onclick="saveCustEdit_()"><span>儲存修改</span></button></div>';
+    }
+    function saveCustEdit_() {
+      const c = selectedCustomer, btn = document.getElementById('ceBtn');
+      btn.disabled = true;
+      api().withSuccessHandler(function (obj) {
+        btn.disabled = false;
+        showToast('✅ 顧客資料已修改');
+        if (obj) selectExistingCustomer(obj, null);
+      }).withFailureHandler(function (err) { btn.disabled = false; alert(err.message); })
+        .updateCustomerInfo({ phone: c.needPhone ? '' : c.phone, custKey: c.custKey || '', name: document.getElementById('ceName').value,
+          birthday: document.getElementById('ceBirthday').value, newPhone: document.getElementById('cePhone').value,
+          source: document.getElementById('ceSource').value, doctor: document.getElementById('ceDoctor').value, note: document.getElementById('ceNote').value });
+    }
+
+    // ---------- 修改自己的諮詢、關懷紀錄 ----------
+    let histList = [];
+    function editHist_(i, a) {
+      const e = histList[i], box = a.closest('.row-item').querySelector('.hist-edit');
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      const f = e.fields || {};
+      if (e.kind === '諮詢') {
+        box.innerHTML = '<div class="sub-panel" style="margin-top:6px;"><label style="margin-top:0;">追蹤內容</label><textarea class="he-content">' + esc(f.content) + '</textarea>' +
+          '<label>客戶反饋摘要</label><input type="text" class="he-feedback" value="' + esc(f.feedback) + '">' +
+          '<div class="row-2"><div><label>是否預約回診</label><select class="he-booked"><option value="">否</option><option value="1"' + (f.booked ? ' selected' : '') + '>是</option></select></div>' +
+          '<div><label>預約日期</label><input type="date" class="he-bookdate" value="' + esc(f.bookDate) + '"></div></div>' +
+          '<label>贈送內容</label><input type="text" class="he-gift" value="' + esc(f.gift) + '">' +
+          '<label>備註</label><input type="text" class="he-note" value="' + esc(f.note) + '">' +
+          '<button type="button" class="mini-btn" style="margin-top:8px;" onclick="saveHist_(' + i + ', this)">儲存修改</button></div>';
+      } else {
+        box.innerHTML = '<div class="sub-panel" style="margin-top:6px;"><label style="margin-top:0;">狀態</label><select class="he-status">' +
+          ['待處理', '已關懷', '已聯繫', '已預約回診'].map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
+          '<label>關懷內容（修改你最後寫的那一則）</label><textarea class="he-text">' + esc(f.text) + '</textarea>' +
+          '<button type="button" class="mini-btn" style="margin-top:8px;" onclick="saveHist_(' + i + ', this)">儲存修改</button></div>';
+      }
+    }
+    function saveHist_(i, btn) {
+      const e = histList[i], box = btn.closest('.hist-edit'), q = function (s) { const el = box.querySelector(s); return el ? el.value : ''; };
+      const ph = selectedCustomer && selectedCustomer.phone;
+      btn.disabled = true;
+      const run = api().withSuccessHandler(function () {
+        showToast('✅ 已修改');
+        document.getElementById('historyBox').innerHTML = '';
+        loadHistoryUI();
+      }).withFailureHandler(function (err) { btn.disabled = false; alert(err.message); });
+      if (e.kind === '諮詢') run.updateConsultRecord({ row: e.row, phone: ph, content: q('.he-content'), feedback: q('.he-feedback'), booked: !!q('.he-booked'),
+        bookDate: q('.he-bookdate'), gift: q('.he-gift'), note: q('.he-note') });
+      else run.updateCareRecord({ row: e.row, phone: ph, status: q('.he-status'), text: q('.he-text') });
+    }
+
     // ---------- 管理員：補建顧客資料 ----------
     function runBackfill_(dryRun) {
       const box = document.getElementById('bfBox');
@@ -3177,10 +3244,14 @@
       box.innerHTML = '<div class="empty">讀取中...</div>';
       const tag = { '消費': 'pay-tag', '諮詢': 'dept-tag', '關懷': 'new-tag' };
       api().withSuccessHandler(function (list) {
-        box.innerHTML = '<div class="sub-panel">' + (list.length ? list.map(function (e) {
+        histList = list;
+        box.innerHTML = '<div class="sub-panel">' + (list.length ? list.map(function (e, i) {
           return '<div class="row-item"><div class="row-meta"><span class="' + tag[e.kind] + '">' + esc(e.kind) + '</span> ' + esc(e.date) +
-            (e.who ? '　' + esc(e.who) : '') + (e.branch ? '　' + esc(e.branch) : '') + '</div><div style="font-size:14px;">' + esc(e.text) + '</div></div>';
-        }).join('') : '<div class="empty">這位顧客還沒有任何紀錄。</div>') + '<div class="hint">最多顯示最近 40 筆。</div></div>';
+            (e.who ? '　' + esc(e.who) : '') + (e.branch ? '　' + esc(e.branch) : '') +
+            (e.editable ? '　<a href="#" onclick="editHist_(' + i + ', this); return false;">✏️ 修改</a>' : '') + '</div>' +
+            '<div style="font-size:14px;">' + esc(e.text) + '</div><div class="hist-edit"></div></div>';
+        }).join('') : '<div class="empty">這位顧客還沒有任何紀錄。</div>') +
+          '<div class="hint">最多顯示最近 40 筆。自己寫的諮詢、關懷紀錄，' + ((perfUser && perfUser.entryDays) || 7) + ' 天內可以修改。</div></div>';
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
         .getCustomerHistory(ph, selectedCustomer && selectedCustomer.custKey);
     }
