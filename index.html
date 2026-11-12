@@ -816,7 +816,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v44（當日業績／本月到診新客）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v45（🧪 測試顧客）</div>
   </div>
 
   <script>
@@ -836,7 +836,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v44';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v45';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1216,7 +1216,7 @@
         div.innerHTML =
           '<div class="avatar">' + esc(c.name ? c.name.charAt(0) : '?') + '</div>' +
           '<div class="info">' +
-            '<div class="name">' + esc(c.name) + '</div>' +
+            '<div class="name">' + esc(c.name) + (c.isTest ? ' <span class="pay-tag" style="background:#EDE3F5; color:#6B4E8C;">🧪 測試</span>' : '') + '</div>' +
             '<div class="meta">' +
               '<span class="tag birthday">🎂 ' + esc(c.birthday || '未填') + '</span>' +
               (c.needPhone ? '<span class="tag" style="background:#F8DCD5; color:#9B3F2D;">📱 待補手機</span>' : '<span class="tag">📱 ' + esc(c.phone || '未填') + '</span>') +
@@ -1239,7 +1239,8 @@
       if (el) el.classList.add('selected');
 
       document.getElementById('confirmedBanner').style.display = 'flex';
-      document.getElementById('confirmedText').innerHTML =
+      document.getElementById('confirmedText').innerHTML = (c.isTest ? '<div style="background:#EDE3F5; color:#6B4E8C; border-radius:10px; padding:8px 10px; margin-bottom:6px;">' +
+          '🧪 <b>這是測試顧客</b>，資料不會算進業績。收費單號可以不填，系統會自動編號（TEST-001…）。</div>' : '') +
         '已確認顧客：<b>' + esc(c.name) + '</b>（生日 ' + esc(c.birthday || '未填') + '，手機 ' + (c.needPhone ? '<b style="color:#9B3F2D;">待補手機</b>' : esc(c.phone || '未填')) + '）' +
         (c.recent ? '<br><span style="font-size:13px;">最近服務：' + esc(c.recent) + '</span>' : '') +
         (c.needPhone ? '<br><span style="font-size:13px;">這位顧客是系統從櫃台日報補建的，還沒有手機。請按「＋ 新增顧客建檔」用同樣的姓名、生日填上手機，系統會自動合併。</span>' : '');
@@ -1482,7 +1483,7 @@
       const amount = document.getElementById('txAmount').value;
       if (!amount) { showToast('請輸入消費金額'); return; }
       if (!document.getElementById('txConsultant').value.trim() && !(perfUser && perfUser.isOther)) { showToast('請填負責諮詢師，業績才算得到你身上'); return; }
-      if (document.getElementById('txPayType').value !== '服務' && !document.getElementById('txReceipt').value.trim()) { showToast('請填寫收費單號'); return; }
+      if (document.getElementById('txPayType').value !== '服務' && !document.getElementById('txReceipt').value.trim() && !(selectedCustomer && selectedCustomer.isTest)) { showToast('請填寫收費單號'); return; }
 
       const payload = {
         phone: selectedCustomer.phone,
@@ -1893,6 +1894,12 @@
         '<label>選擇檔案（營業報表）</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)">' +
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
+
+      // 測試顧客
+      html += '<div class="card visible"><div class="section-title">🧪　測試顧客（人員練習用）</div>' +
+        '<div class="hint" style="margin-top:0;">測試顧客的消費、關懷、諮詢<b>不算進任何業績、人數、等級、報表</b>，人員可以放心練習。成交明細會顯示「🧪 測試」但不算合計。' +
+        '測試顧客會有 3 筆測試課程可以練習點選，堂數不會被扣。</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadTestCust_()">載入</button><div id="tcBox"></div></div>';
 
       // 最近的匯入（可以復原）
       html += '<div class="card visible"><div class="section-title">↩️　最近的匯入（可以復原）</div>' +
@@ -2717,6 +2724,43 @@
         }
       }).withFailureHandler(function (err) { showToast(err.message); })
         .resolveUnknownName({ raw: u.raw, action: action, target: target, branch: branch });
+    }
+
+    // ---------- 管理員：測試顧客 ----------
+    let tcList = [];
+    function loadTestCust_() {
+      const box = document.getElementById('tcBox');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (r) { tcList = r.list; renderTestCust_(r.courses); })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getTestCustomers();
+    }
+    function renderTestCust_(courses) {
+      const box = document.getElementById('tcBox');
+      box.innerHTML = '<div class="sub-panel">' + (tcList.length ? tcList.map(function (x, i) {
+          return '<div class="sub-row"><span>🧪 <b>' + esc(x.name || '（未填姓名）') + '</b>' + (x.phone ? '　' + esc(x.phone) : '') + '</span>' +
+            '<button class="mini-btn grey" data-i="' + i + '" onclick="tcList.splice(this.dataset.i,1); saveTestCust_()">移除</button></div>';
+        }).join('') : '<div class="row-meta">目前沒有測試顧客。</div>') +
+        '<div class="row-2" style="margin-top:8px;"><input type="text" id="tcName" placeholder="姓名，例如 張胖虎"><input type="text" id="tcPhone" placeholder="手機（可不填）" inputmode="numeric"></div>' +
+        '<button type="button" class="mini-btn" onclick="tcAdd_()">＋ 加入測試顧客</button>' +
+        (courses ? '<div class="row-meta" style="margin-top:8px;">測試課程：' + courses.map(function (c) { return esc(c.small) + '〔' + esc(c.cat) + '〕' + c.left + ' 次'; }).join('、') + '</div>' : '') +
+        '<button type="button" class="mini-btn grey" style="margin-top:10px;" onclick="clearTest_()">🧹 清除測試資料</button></div>';
+    }
+    function tcAdd_() {
+      const name = document.getElementById('tcName').value.trim(), phone = document.getElementById('tcPhone').value.trim();
+      if (!name && !phone) { showToast('請填姓名或手機'); return; }
+      tcList.push({ name: name, phone: phone });
+      saveTestCust_();
+    }
+    function saveTestCust_() {
+      api().withSuccessHandler(function (list) { tcList = list; renderTestCust_(null); perfStale = true; })
+        .withFailureHandler(function (err) { showToast(err.message); }).saveTestCustomers({ list: tcList });
+    }
+    function clearTest_() {
+      if (!confirm('刪除所有測試顧客的消費、關懷、諮詢紀錄？（顧客本身和測試課程會保留）')) return;
+      api().withSuccessHandler(function (c) {
+        showToast('✅ 已清除：' + Object.keys(c).map(function (k) { return k + ' ' + c[k] + ' 列'; }).join('、'));
+        perfStale = true;
+      }).withFailureHandler(function (err) { showToast(err.message); }).clearTestData();
     }
 
     // ---------- 管理員：最近的匯入與復原 ----------
@@ -4451,7 +4495,8 @@
       let h = '<div class="section-title" style="justify-content:space-between;">🧾　成交明細' +
         '<select style="width:auto; padding:6px 34px 6px 10px; font-size:14px;" onchange="loadDeals_(dl.name, this.value)">' +
         months.map(function (m) { return '<option value="' + m + '"' + (m === r.month ? ' selected' : '') + '>' + ym(m) + '</option>'; }).join('') + '</select></div>' +
-        '<div class="dl-body"><div class="sub-panel" style="margin:0 0 12px;">' + ym(r.month) + '共 <b>' + r.count + '</b> 筆、合計 <b>' + money(r.total) + '</b></div>';
+        '<div class="dl-body"><div class="sub-panel" style="margin:0 0 12px;">' + ym(r.month) + '共 <b>' + r.count + '</b> 筆、合計 <b>' + money(r.total) + '</b>' +
+          (r.testCount ? '<br><span class="row-meta">另有 🧪 測試消費 ' + r.testCount + ' 筆（不算在內）</span>' : '') + '</div>';
       // 本月賣出品項
       h += '<div class="group-title first">賣出品項</div>' + (r.products.length ? r.products.map(function (p) {
         return '<div class="sub-row"><span>' + esc(p.name) + '</span><span><b>' + money(p.s) + '</b>　' + p.n + ' 次</span></div>' +
@@ -4463,7 +4508,8 @@
       h += '<div class="group-title">每張單</div>' + (r.rows.length ? r.rows.slice((dl.page - 1) * dl.per, dl.page * dl.per).map(function (x) {
         const tags = (x.custType === '新客' && !x.internal ? '<span class="new-tag">新客</span>' : '') + reconTag_(x.recon) +
           (x.whole ? '<span class="pay-tag">拆帳</span>' : '') + (x.service ? '<span class="pay-tag">服務（不收費）</span>' : '') +
-          (x.change ? '<span class="pay-tag">療程更改</span>' : '') + (x.internal ? '<span class="pay-tag">非個人業績</span>' : '');
+          (x.change ? '<span class="pay-tag">療程更改</span>' : '') + (x.internal ? '<span class="pay-tag">非個人業績</span>' : '') +
+          (x.isTest ? '<span class="pay-tag" style="background:#EDE3F5; color:#6B4E8C;">🧪 測試・不算業績</span>' : '');
         let items = '';
         if (x.items.length) {
           items = '<div class="sub-panel" style="margin:6px 0 0; padding:6px 10px;">' + (x.prov ? '<div class="row-meta" style="font-size:12px;">暫定（品項日報表），營業報表匯入後以營業報表為準</div>' : '') + x.items.map(function (it) {
