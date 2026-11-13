@@ -643,7 +643,7 @@
               <select id="sub1"></select>
             </div>
             <label>具體項目 1</label>
-            <input type="text" id="item1" placeholder="例如：海芙音波 600發">
+            <div style="display:flex; gap:8px;"><input type="text" id="item1" placeholder="例如：海芙音波 600發" style="flex:1; min-width:0;"><input type="number" id="qty1" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
           </div>
 
           <div class="item-block" id="itemBlock2" style="display:none;">
@@ -658,7 +658,7 @@
               <select id="sub2"></select>
             </div>
             <label>具體項目 2</label>
-            <input type="text" id="item2" placeholder="例如：肉毒抬頭紋 20U">
+            <div style="display:flex; gap:8px;"><input type="text" id="item2" placeholder="例如：肉毒抬頭紋 20U" style="flex:1; min-width:0;"><input type="number" id="qty2" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
           </div>
 
           <div class="item-block" id="itemBlock3" style="display:none;">
@@ -673,7 +673,7 @@
               <select id="sub3"></select>
             </div>
             <label>具體項目 3</label>
-            <input type="text" id="item3" placeholder="項目名稱">
+            <div style="display:flex; gap:8px;"><input type="text" id="item3" placeholder="項目名稱" style="flex:1; min-width:0;"><input type="number" id="qty3" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
           </div>
 
           <button type="button" class="add-item-btn" id="addItemBtn" onclick="revealNextItem()">＋ 新增療程項目</button>
@@ -838,7 +838,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v48.1（修正匯入、存檔變慢）／電腦版放大</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v49（療程大類可新增／數量／課程照 CRM 扣）</div>
   </div>
 
   <script>
@@ -858,7 +858,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v48.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v49';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1082,6 +1082,18 @@
 
     // 療程細項（「療程細項」分頁）
     let itemCatalog = {};
+    // 療程大類：原本的六類＋「系統管理 → 療程細項」裡新增的大類
+    function fillCatOptions_() {
+      const base = ['手術', '微整', '電音波', '光療', '美療'];
+      const cats = base.concat(Object.keys(itemCatalog || {}).filter(function (k) { return k && base.indexOf(k) === -1 && k !== '無'; })).concat(['無']);
+      ['cat1', 'cat2', 'cat3'].forEach(function (id) {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">請選擇</option>' + cats.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
+        if (cur && cats.indexOf(cur) !== -1) sel.value = cur;
+      });
+    }
 
     // 登入後才載入：身分、人員名單、細項
     function loadLists_() {
@@ -1098,7 +1110,7 @@
         })
         .withFailureHandler(function (err) { console.log('讀取諮詢師名單失敗：' + err.message); })
         .getActiveConsultantList();
-      api().withSuccessHandler(function (c) { itemCatalog = c || {}; }).getItemCatalog();
+      api().withSuccessHandler(function (c) { itemCatalog = c || {}; fillCatOptions_(); }).getItemCatalog();
       api()
         .withSuccessHandler(function (names) { fillDatalist_('doctorList', names); })
         .withFailureHandler(function (err) { console.log('讀取醫師名單失敗：' + err.message); })
@@ -1485,9 +1497,10 @@
 
     function resetTxForm_() {
       document.getElementById('txDate').value = localDateStr();
-      ['cat1', 'item1', 'cat2', 'item2', 'cat3', 'item3', 'txAmount', 'txConsultant', 'txNote'].forEach(function (id) {
+      ['cat1', 'item1', 'cat2', 'item2', 'cat3', 'item3', 'qty1', 'qty2', 'qty3', 'txAmount', 'txConsultant', 'txNote'].forEach(function (id) {
         document.getElementById(id).value = '';
       });
+      usedCourseKey = '';
       document.getElementById('txPayType').value = '全額';
       onPayTypeChange();
       document.getElementById('txReceipt').value = '';
@@ -1524,6 +1537,8 @@
         item2: document.getElementById('item2').value,
         cat3: document.getElementById('cat3').value,
         item3: document.getElementById('item3').value,
+        qty1: document.getElementById('qty1').value, qty2: document.getElementById('qty2').value, qty3: document.getElementById('qty3').value,
+        courseRef: usedCourseKey,                // 從「未使用課程」點選的是哪一筆（扣剩餘量用）
         amount: amount,
         payType: document.getElementById('txPayType').value,
         receipt: document.getElementById('txReceipt').value.trim(),
@@ -1929,6 +1944,11 @@
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
 
+      // 課程剩餘量差異
+      html += '<div class="card visible"><div class="section-title">📋　課程剩餘量差異</div>' +
+        '<div class="hint" style="margin-top:0;">匯入新的未消耗療程後，比對「上次報表 − CRM 記錄的使用」跟「新報表」。不一樣的列在這裡，請跟櫃台確認；數字一律以報表為準。</div>' +
+        '<button type="button" class="add-item-btn" onclick="loadCourseDiffs_()">載入</button><div id="cdBox"></div></div>';
+
       // 年度封存
       (function () {
         const y0 = new Date().getFullYear() - 2;
@@ -2244,6 +2264,7 @@
 
     // ===================== 未消耗療程（POS） =====================
     let customerCourses = [];
+    let usedCourseKey = '';
     let posBlocked = false, posCols = {}, posHeads = {};
 
     function loadCustomerCourses_(customer) {
@@ -2277,8 +2298,8 @@
           customerCourses.map(function (c, i) {
             return '<div class="candidate" style="margin:8px 0 0; padding:10px 12px;" data-i="' + i + '" onclick="useCourse(this.dataset.i)"><div class="info">' +
               '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.cat ? ' <span class="pay-tag">' + esc(c.cat) + '</span>' : '') + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
-              '<div class="meta">' + (c.used ? '預估剩 <b>' + c.est + '</b> 次（POS ' + c.left + ' 次，' + esc(c.dataDay) + ' 後已用 ' + c.used + ' 次）'
-                : '剩 <b>' + c.left + '</b> 次') + (c.price ? '・單價 ' + money(c.price) + '・剩餘 ' + money(c.estAmount) : '') +
+              '<div class="meta">' + (c.used ? '剩 <b>' + c.est + '</b>（報表 ' + c.left + '，CRM 已扣 ' + c.used + '，待報表確認）'
+                : '剩 <b>' + c.left + '</b>') + (c.price ? '・單價 ' + money(c.price) + '・剩餘 ' + money(c.estAmount) : '') +
               '・' + esc(c.tab) + (customerCourses.length && c.branch ? '・' + esc(c.branch) : '') +
               (c.byName ? '・<span style="color:#9B5F4D;">POS 無手機，依姓名比對</span>' : '') + '</div></div></div>';
           }).join('');
@@ -2302,9 +2323,12 @@
         if (Array.prototype.some.call(sub.options, function (o) { return o.value === c.tab; })) sub.value = c.tab;
       }
       document.getElementById('item1').value = c.small || c.tab;
+      document.getElementById('qty1').value = 1;
+      usedCourseKey = c.key || '';
       document.querySelectorAll('#courseBox .candidate').forEach(function (d) { d.classList.remove('selected'); });
       document.querySelector('#courseBox .candidate[data-i="' + i + '"]').classList.add('selected');
-      showToast('已帶入「' + (c.small || c.tab) + '」，款項類型＝服務（不收費）');
+      showToast('已帶入「' + (c.small || c.tab) + '」，數量預設 1，請改成實際用量');
+      document.getElementById('qty1').focus();
     }
 
     // ---------- 管理員：讀 POS Excel ----------
@@ -2845,6 +2869,26 @@
         if (confirm(msg)) go();
       }).withFailureHandler(function (err) { showToast(err.message); })
         .setCustomerTest({ phone: c.phone, name: c.name, test: true, dryRun: true });
+    }
+
+    // ---------- 管理員：課程剩餘量差異 ----------
+    let cdList = [];
+    function loadCourseDiffs_() {
+      const box = document.getElementById('cdBox');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (list) {
+        cdList = list;
+        box.innerHTML = list.length ? '<button type="button" class="mini-btn" onclick="confirmCourseDiffs_([])">全部確認（' + list.length + ' 筆）</button>' + list.map(function (x) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.name) + '　' + esc(x.small) + '</span>' +
+            '<button class="mini-btn grey" data-r="' + x.row + '" onclick="confirmCourseDiffs_([Number(this.dataset.r)])">✅ 已確認</button></div>' +
+            '<div class="row-meta">' + esc(x.at) + '　' + esc(x.branch) + '・' + esc(x.cat) + '　' + esc(x.phone) + '<br>上次報表 ' + x.oldLeft + ' − CRM 記錄使用 ' + x.used +
+            ' ＝ CRM 估算 <b>' + x.est + '</b>，新報表 <b>' + x.report + '</b></div></div>';
+        }).join('') : '<div class="empty">沒有需要確認的差異。</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getCourseDiffs();
+    }
+    function confirmCourseDiffs_(rows) {
+      api().withSuccessHandler(function (n) { showToast('✅ 已確認 ' + n + ' 筆'); loadCourseDiffs_(); })
+        .withFailureHandler(function (err) { showToast(err.message); }).confirmCourseDiffs({ rows: rows });
     }
 
     // ---------- 管理員：年度封存 ----------
@@ -3801,7 +3845,7 @@
           btn.disabled = false;
           btn.innerHTML = '<span>儲存療程細項</span>';
           showToast('療程細項已更新');
-          api().withSuccessHandler(function (c) { itemCatalog = c || {}; }).getItemCatalog();
+          api().withSuccessHandler(function (c) { itemCatalog = c || {}; fillCatOptions_(); }).getItemCatalog();
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存療程細項</span>'; showToast(err.message); })
         .saveCatalog(adminData.catalog);
