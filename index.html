@@ -820,7 +820,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v47（存檔加速／修改顧客資料與紀錄）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v48（匯入日期範圍／背景預先計算／年度封存）</div>
   </div>
 
   <script>
@@ -840,7 +840,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v47';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v48';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1898,7 +1898,7 @@
       html += '<div class="card visible"><div class="section-title">📥　匯入櫃台日報（正式業績）</div>' +
         '<div class="hint" style="margin-top:0;">以「收費單號」為準：同一張單只會有一筆。人員先輸入的會自動對上；金額或負責人不同，以櫃台日報為準並通知人員。' +
         '管理員修正過的不會被覆蓋。可以重複匯入同一份檔案，不會重複。</div>' +
-        '<div class="row-2"><div><label>這份櫃台日報是哪一家</label><select id="fdBranch">' +
+        '<div class="row-2"><div><label>這份櫃台日報是哪一家</label><select id="fdBranch" onchange="fdRange_()">' +
           d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
         '<div><label>選擇檔案</label><input type="file" id="fdFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFrontDeskFile(this)"></div></div>' +
         '<div id="fdPreview"></div></div>';
@@ -1910,6 +1910,18 @@
         '<label>選擇檔案（營業報表）</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)">' +
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
+
+      // 年度封存
+      (function () {
+        const y0 = new Date().getFullYear() - 2;
+        html += '<div class="card visible"><div class="section-title">📦　年度封存</div>' +
+          '<div class="hint" style="margin-top:0;">主檔案保留今年和去年；更早的消費、關懷、諮詢、報表明細、紀錄搬到同一個雲端資料夾的「欣莘CRM封存_年份」。' +
+          '資料變少，所有畫面和匯入都會變快。顧客主資料不搬，累積消費不會變少；顧客歷程可以「查看封存紀錄」。' +
+          '<br>第一次執行會要求重新授權（建立檔案），請按「允許」。</div>' +
+          '<div class="row-2" style="align-items:end;"><div><label style="margin-top:0;">封存這一年（含）以前</label><select id="arcYear">' +
+          [y0, y0 - 1, y0 - 2, y0 - 3].map(function (y) { return '<option value="' + y + '">' + y + ' 年（含）以前</option>'; }).join('') + '</select></div>' +
+          '<button type="button" class="add-item-btn" style="margin:0;" onclick="runArchive_(true)">預覽</button></div><div id="arcBox"></div></div>';
+      })();
 
       // 測試顧客
       html += '<div class="card visible"><div class="section-title">🧪　測試顧客（人員練習用）</div>' +
@@ -1948,7 +1960,7 @@
       html += '<div class="card visible"><div class="section-title">📥　匯入新客來源明細表（新客數）</div>' +
         '<div class="hint" style="margin-top:0;">只用來算「有消費新客數」（是否成交＝成交，同一人只算一次），個人依「服務人員」。<b>不讀任何金額</b>。' +
         '成交新客會自動建檔（負責人＝服務人員），也會補上櫃台日報沒有手機的顧客。同一家店、同一個月重新匯入會整批取代。</div>' +
-        '<div class="row-2"><div><label>這份是哪一家</label><select id="nsBranch">' +
+        '<div class="row-2"><div><label>這份是哪一家</label><select id="nsBranch" onchange="if (typeof nsMonths !== \'undefined\' && nsMonths.length) nsRange_()">' +
           d.clinics.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
         '<div><label>選擇檔案</label><input type="file" id="nsFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readNewSrcFile(this)"></div></div>' +
         '<div id="nsPreview"></div></div>';
@@ -2489,10 +2501,8 @@
             });
             if (!rows.length) { box.innerHTML = '<div class="empty">沒有讀到資料。請確認檔案有「收費單號」「客戶姓名」欄。</div>'; return; }
             fdParsed = { rows: rows, fileName: file.name };
-            box.innerHTML = '<div class="empty">已讀到 ' + rows.length + ' 列，正在比對...</div>';
-            api().withSuccessHandler(function (s) { renderFdPreview_(s, false); })
-              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-              .importFrontDesk(fdReq_(true));
+            fdRange_();
+            fdRunPreview_();
           } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
         };
         reader.readAsArrayBuffer(file);
@@ -2500,7 +2510,25 @@
     }
 
     function fdReq_(dryRun) {
-      return { branch: document.getElementById('fdBranch').value, fileName: fdParsed.fileName, rows: fdParsed.rows, dryRun: dryRun };
+      const rows = fdParsed.rows.filter(function (r) { return inRange_('fdRange', r.date); });
+      return { branch: document.getElementById('fdBranch').value, fileName: fdParsed.fileName, rows: rows, dryRun: dryRun };
+    }
+    function fdRunPreview_() {
+      const box = document.getElementById('fdPreview');
+      const n = fdReq_(true).rows.length;
+      if (!n) { box.innerHTML = '<div class="empty">這個日期範圍沒有資料。</div>'; return; }
+      box.innerHTML = '<div class="empty">' + n + ' 列，比對中...</div>';
+      api().withSuccessHandler(function (s) { renderFdPreview_(s, false); })
+        .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .importFrontDesk(fdReq_(true));
+    }
+    function fdRange_() {
+      if (!fdParsed) return;
+      let rb = document.getElementById('fdRange');
+      if (!rb) { document.getElementById('fdPreview').insertAdjacentHTML('beforebegin', '<div id="fdRange"></div>'); rb = document.getElementById('fdRange'); }
+      const br = document.getElementById('fdBranch').value;
+      const days = fdParsed.rows.map(function (r) { return r.date; }).filter(function (d, i, a) { return d && a.indexOf(d) === i; });
+      rangeUi_('fdRange', '櫃台日報（' + br + '）', [((adminData && adminData.lastImports) || {})['櫃台日報|' + br] || ''], days, fdRunPreview_);
     }
 
     function renderFdPreview_(s, done) {
@@ -2640,18 +2668,29 @@
         fiSheets.map(function (s, i) {
           const m = s.rows[0].date.slice(0, 7);
           return '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:6px;">' +
-            '<input type="checkbox" id="fiPick' + i + '" style="width:18px; height:18px;"' + (s.branch && m === latest ? ' checked' : '') + (s.branch ? '' : ' disabled') + '>' +
+            '<input type="checkbox" id="fiPick' + i + '" style="width:18px; height:18px;" onchange="fiRange_()"' + (s.branch && m === latest ? ' checked' : '') + (s.branch ? '' : ' disabled') + '>' +
             esc(s.tab) + '　' + s.rows.length + ' 列　→ ' + (s.branch ? '<b>' + esc(s.branch) + '</b>' : '<span style="color:var(--text-muted);">不在診所清單（例如已結束營業），略過</span>') + '</label>';
         }).join('') +
         '<div class="hint">同一家診所、同一段日期的舊資料會整批取代，重複匯入不會重複。</div>' +
+        '<div id="fiRange"></div>' +
         '<button type="button" class="primary-btn" id="fiBtn1" style="margin-top:12px; box-shadow:none;" onclick="runFinance_(true)"><span>預覽勾選的分頁</span></button>' +
         '<div id="fiResult"></div></div>';
+      fiRange_();
+    }
+    function fiRange_() {
+      const picked = fiSheets.filter(function (s, i) { const el = document.getElementById('fiPick' + i); return el && el.checked && s.branch; });
+      const days = [].concat.apply([], picked.map(function (s) { return s.rows.map(function (r) { return r.date; }); })).filter(function (d, i, a) { return d && a.indexOf(d) === i; });
+      const lasts = picked.map(function (s) { return ((adminData && adminData.lastImports) || {})['營業報表|' + s.branch] || ''; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      if (!days.length) { const b = document.getElementById('fiRange'); if (b) b.innerHTML = ''; delete RANGES.fiRange; return; }
+      rangeUi_('fiRange', '營業報表', lasts, days, function () { runFinance_(true); });
     }
 
     // 逐一處理勾選的分頁（每個分頁用它自己的診所）
     function runFinance_(dryRun) {
-      const picked = fiSheets.filter(function (s, i) { const el = document.getElementById('fiPick' + i); return el && el.checked; });
-      if (!picked.length) { showToast('請至少勾選一個分頁'); return; }
+      const picked = fiSheets.filter(function (s, i) { const el = document.getElementById('fiPick' + i); return el && el.checked; })
+        .map(function (s) { return Object.assign({}, s, { rows: s.rows.filter(function (r) { return inRange_('fiRange', r.date); }) }); })
+        .filter(function (s) { return s.rows.length; });
+      if (!picked.length) { showToast('勾選的分頁在這個日期範圍沒有資料'); return; }
       const out = document.getElementById('fiResult');
       const btn = document.getElementById(dryRun ? 'fiBtn1' : 'fiBtn2');
       if (btn) { btn.disabled = true; btn.innerHTML = '<span>處理中...</span>'; }
@@ -2698,6 +2737,31 @@
         .withFailureHandler(function (err) { showToast(err.message); })
         .managePseudoPerson({ name: x.name, action: x.suggest, target: x.target || '' });
     }
+
+    // ---------- 匯入的日期範圍：預設只匯入「上次之後」的新日期 ----------
+    const RANGES = {};
+    function nextDay_(d) { const x = new Date(d.replace(/-/g, '/')); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+    // lasts：這次涉及的診所上次匯入到哪天（取最早的）；days：檔案裡有的日期
+    function rangeUi_(boxId, label, lasts, days, rerun) {
+      const box = document.getElementById(boxId);
+      if (!box || !days.length) return;
+      days = days.slice().sort();
+      const min = days[0], max = days[days.length - 1];
+      const known = lasts.filter(Boolean).sort();
+      const last = known.length === lasts.length && known.length ? known[0] : '';
+      let from = last && last >= min ? nextDay_(last) : min, note = '';
+      if (from > max) { from = min; note = '⚠️ 檔案裡的日期都已經匯入過了；要重新匯入請自己選範圍'; }
+      RANGES[boxId] = { from: from, to: max, rerun: rerun };
+      box.innerHTML = '<div class="sub-panel" style="margin:8px 0;"><b>📅 這次匯入的日期範圍</b>' +
+        '<div class="row-meta">檔案裡的日期：' + min.slice(5).replace('-', '/') + '～' + max.slice(5).replace('-', '/') +
+        '　｜　上次' + label + '匯入到：' + (last ? '<b>' + last.slice(5).replace('-', '/') + '</b>' : '（還沒有紀錄）') + '</div>' +
+        (note ? '<div class="row-meta" style="color:#9B3F2D;">' + note + '</div>' : '') +
+        '<div class="row-2" style="margin-top:6px;"><div><label style="margin-top:0;">從</label><input type="date" value="' + from + '" min="' + min + '" max="' + max + '" onchange="RANGES[\'' + boxId + '\'].from=this.value"></div>' +
+        '<div><label style="margin-top:0;">到</label><input type="date" value="' + max + '" min="' + min + '" max="' + max + '" onchange="RANGES[\'' + boxId + '\'].to=this.value"></div></div>' +
+        '<div class="hint">只會處理這段日期，其他日期完全不動。日期越少，匯入越快。</div>' +
+        '<button type="button" class="mini-btn" onclick="RANGES[\'' + boxId + '\'].rerun()">用這個範圍預覽</button></div>';
+    }
+    function inRange_(boxId, d) { const r = RANGES[boxId]; return !r || (d >= r.from && d <= r.to); }
 
     // ---------- 匯入時對不到的名字：直接在預覽處理 ----------
     let unkNames = [];
@@ -2763,6 +2827,37 @@
         if (confirm(msg)) go();
       }).withFailureHandler(function (err) { showToast(err.message); })
         .setCustomerTest({ phone: c.phone, name: c.name, test: true, dryRun: true });
+    }
+
+    // ---------- 管理員：年度封存 ----------
+    function runArchive_(dryRun) {
+      const y = document.getElementById('arcYear').value, box = document.getElementById('arcBox');
+      if (!dryRun && !confirm('把 ' + y + ' 年（含）以前的資料搬到封存檔？\n\n會先全部複製並確認筆數一致，才從主檔案刪除。')) return;
+      box.innerHTML = '<div class="empty">' + (dryRun ? '計算中…' : '封存中，資料多的話需要幾分鐘，請不要關閉畫面…') + '</div>';
+      api().withSuccessHandler(function (r) {
+        const list = Object.keys(r.counts).map(function (k) { return k + ' <b>' + r.counts[k].toLocaleString() + '</b> 筆'; }).join('<br>');
+        const files = Object.keys(r.files || {}).sort().map(function (k) { return '<a href="' + esc(r.files[k].url) + '" target="_blank">欣莘CRM封存_' + esc(k) + '</a>'; }).join('、');
+        box.innerHTML = '<div class="sub-panel">' + (r.done ? '<b>✅ 封存完成</b><br>' : '<b>' + r.year + ' 年（含）以前會搬走：</b><br>') +
+          (list || '沒有資料需要封存。') + (r.total ? '<br>共 <b>' + r.total.toLocaleString() + '</b> 筆' : '') +
+          (files ? '<div class="row-meta" style="margin-top:6px;">封存檔：' + files + '</div>' : '') +
+          (dryRun && r.total ? '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="runArchive_(false)"><span>確認封存</span></button>' : '') + '</div>';
+        if (r.done) perfStale = true;
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .archiveYear({ year: Number(y), dryRun: dryRun });
+    }
+
+    // 顧客歷程：查看封存紀錄
+    function loadArchivedHistory_(a) {
+      const c = selectedCustomer, box = a.parentNode.querySelector('.arc-hist') || a.insertAdjacentElement('afterend', document.createElement('div'));
+      box.className = 'arc-hist';
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="row-meta">讀取封存檔中…</div>';
+      api().withSuccessHandler(function (list) {
+        box.innerHTML = list.length ? list.map(function (e) {
+          return '<div class="row-item"><div class="row-meta">' + esc(e.kind) + ' ' + esc(e.date) + (e.who ? '　' + esc(e.who) : '') + '　' + esc(e.branch) + '</div><div style="font-size:14px;">' + esc(e.text) + '</div></div>';
+        }).join('') : '<div class="row-meta">封存檔裡沒有這位顧客的紀錄。</div>';
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="row-meta">' + esc(err.message) + '</div>'; })
+        .getArchivedHistory({ phone: c && !c.needPhone ? c.phone : '', custKey: c && c.custKey || '' });
     }
 
     // ---------- 管理員：測試顧客 ----------
@@ -3115,14 +3210,24 @@
             box.innerHTML = '<div class="sub-panel"><b>讀到 ' + nsMonths.length + ' 個月份，請勾選要匯入的：</b>' +
               nsMonths.map(function (m, i) {
                 return '<label style="display:flex; gap:8px; align-items:center; font-weight:400; color:var(--text); margin-top:6px;">' +
-                  '<input type="checkbox" id="nsPick' + i + '" style="width:18px; height:18px;"' + (m.month === latest ? ' checked' : '') + '>' +
+                  '<input type="checkbox" id="nsPick' + i + '" style="width:18px; height:18px;" onchange="nsRange_()"' + (m.month === latest ? ' checked' : '') + '>' +
                   esc(m.tab) + '　' + m.rows.length + ' 位諮詢、成交 ' + m.deals + ' 筆</label>';
               }).join('') +
+              '<div id="nsRange"></div>' +
               '<button type="button" class="primary-btn" id="nsBtn1" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(true)"><span>預覽</span></button><div id="nsResult"></div></div>';
+            nsRange_();
           } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
         };
         reader.readAsArrayBuffer(file);
       });
+    }
+
+    function nsRange_() {
+      const picked = nsMonths.filter(function (m, i) { const el = document.getElementById('nsPick' + i); return el && el.checked; });
+      const br = document.getElementById('nsBranch').value;
+      const days = [].concat.apply([], picked.map(function (m) { return m.rows.map(function (r) { return r.date; }); })).filter(function (d, i, a) { return d && a.indexOf(d) === i; });
+      if (!days.length) { const b = document.getElementById('nsRange'); if (b) b.innerHTML = ''; delete RANGES.nsRange; return; }
+      rangeUi_('nsRange', '新客來源（' + br + '）', [((adminData && adminData.lastImports) || {})['新客來源|' + br] || ''], days, function () { runNewSrc_(true); });
     }
 
     function runNewSrc_(dryRun) {
@@ -3158,8 +3263,18 @@
           (dryRun ? '<button type="button" class="primary-btn" id="nsBtn2" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(false)"><span>確認匯入</span></button>' : '');
         if (!dryRun) { perfStale = true; showToast('新客來源明細表匯入完成'); }
       }).withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>' + (dryRun ? '預覽' : '確認匯入') + '</span>'; showToast(err.message); })
-        .importNewCustSource({ branch: document.getElementById('nsBranch').value, fileName: nsFileName, dryRun: dryRun,
-          months: picked.map(function (m) { return { month: m.month, rows: m.rows }; }) });
+        .importNewCustSource(nsReq_(picked, dryRun));
+    }
+    // 只送這段日期的列；範圍涵蓋整個月時，沒有填日期的列也一起送
+    function nsReq_(picked, dryRun) {
+      const r = RANGES.nsRange;
+      const months = picked.map(function (m) { return m.month; }).sort();
+      const first = months[0] + '-01', lastM = months[months.length - 1];
+      const end = (function () { const d = new Date(Number(lastM.slice(0, 4)), Number(lastM.slice(5, 7)), 0); return lastM + '-' + String(d.getDate()).padStart(2, '0'); })();
+      const whole = !r || (r.from <= first && r.to >= end);
+      return { branch: document.getElementById('nsBranch').value, fileName: nsFileName, dryRun: dryRun,
+        from: r ? r.from : '', to: r ? r.to : '', wholeMonth: whole,
+        months: picked.map(function (m) { return { month: m.month, rows: m.rows.filter(function (x) { return x.date ? inRange_('nsRange', x.date) : whole; }) }; }) };
     }
 
     // ---------- 管理員：拆帳待處理 ----------
@@ -3251,7 +3366,8 @@
             (e.editable ? '　<a href="#" onclick="editHist_(' + i + ', this); return false;">✏️ 修改</a>' : '') + '</div>' +
             '<div style="font-size:14px;">' + esc(e.text) + '</div><div class="hist-edit"></div></div>';
         }).join('') : '<div class="empty">這位顧客還沒有任何紀錄。</div>') +
-          '<div class="hint">最多顯示最近 40 筆。自己寫的諮詢、關懷紀錄，' + ((perfUser && perfUser.entryDays) || 7) + ' 天內可以修改。</div></div>';
+          '<div class="hint">最多顯示最近 40 筆。自己寫的諮詢、關懷紀錄，' + ((perfUser && perfUser.entryDays) || 7) + ' 天內可以修改。</div>' +
+          '<a href="#" style="font-size:13px;" onclick="loadArchivedHistory_(this); return false;">📦 查看封存紀錄（更早的年份）</a></div>';
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
         .getCustomerHistory(ph, selectedCustomer && selectedCustomer.custKey);
     }
