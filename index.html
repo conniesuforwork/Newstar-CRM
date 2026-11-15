@@ -705,25 +705,20 @@
 
           <div class="section-title">🩹　術後關懷提醒（選填）</div>
 
-          <label>關懷階段/事項</label>
-          <select id="fuStage">
-            <option value="">請選擇</option>
-            <option>術後1天關懷</option>
-            <option>術後7天拆線</option>
-            <option>術後1個月複查</option>
-            <option>4個月補打提醒</option>
-            <option>定期保養</option>
-          </select>
-
-          <label>預計關懷日期</label>
-          <input type="date" id="fuDate">
-
           <label>關懷大類</label>
-          <select id="fuCategory">
+          <select id="fuCategory" onchange="fillStageOptions_()">
             <option value="">請選擇</option>
             <option>手術</option><option>微整</option><option>電音波</option>
             <option>光療</option><option>美療</option><option>無</option>
           </select>
+
+          <label>關懷階段/事項</label>
+          <select id="fuStage">
+            <option value="">先選關懷大類</option>
+          </select>
+
+          <label>預計關懷日期</label>
+          <input type="date" id="fuDate">
 
           <label>具體項目</label>
           <input type="text" id="fuItem" placeholder="例如：海芙音波 600發">
@@ -838,7 +833,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v50（療程大類／關懷提醒設定／購買當天使用）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v50.1（關懷事項依大類分組）</div>
   </div>
 
   <script>
@@ -858,7 +853,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v50';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v50.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1085,7 +1080,7 @@
     // 療程大類：原本的六類＋「系統管理 → 療程細項」裡新增的大類
     let formSettings = null;
     function loadFormSettings_() {
-      api().withSuccessHandler(function (r) { formSettings = r; fillCatOptions_(); fillStageOptions_([]); }).withFailureHandler(function () {}).getFormSettings();
+      api().withSuccessHandler(function (r) { formSettings = r; fillCatOptions_(); fillStageOptions_(); }).withFailureHandler(function () {}).getFormSettings();
     }
     function fillCatOptions_() {
       const base = ['手術', '微整', '電音波', '光療', '美療', '點滴', '減重'];
@@ -1603,8 +1598,8 @@
     // 送出消費後：不直接清空，順手帶出術後關懷
     function afterTxSubmitted_(p) {
       document.getElementById('txCard').classList.remove('visible');
-      fillStageOptions_([p.cat1, p.cat2, p.cat3]);
       if (p.cat1 && p.cat1 !== '無') document.getElementById('fuCategory').value = p.cat1;
+      fillStageOptions_();
       if (p.item1) document.getElementById('fuItem').value = p.item1;
       if (p.consultant) document.getElementById('fuOwner').value = p.consultant;
       document.getElementById('fuDoneBar').style.display = 'block';
@@ -1612,21 +1607,29 @@
     }
 
     // ---------- 術後關懷提醒 ----------
-    // 關懷階段：系統管理 → 關懷提醒設定；依這次消費的大類只顯示適用的階段（沒選大類＝全部）
+    // 關懷事項：系統管理 → 關懷提醒設定。先選關懷大類，只列這個大類的事項＋通用事項
     function careStages_() {
-      return (formSettings && formSettings.stages) || [{ name: '術後1天關懷', days: 1, cats: [] }, { name: '術後7天拆線', days: 7, cats: [] },
-        { name: '術後1個月複查', days: 30, cats: [] }, { name: '4個月補打提醒', days: 120, cats: [] }, { name: '定期保養', days: 60, cats: [] }];
+      return (formSettings && formSettings.stages) || [{ cat: '手術', name: '術後1天關懷', days: 1 }, { cat: '手術', name: '術後7天拆線', days: 7 },
+        { cat: '手術', name: '術後1個月複查', days: 30 }, { cat: '微整', name: '4個月補打提醒', days: 120 }, { cat: '', name: '定期保養', days: 60 }];
     }
-    function fillStageOptions_(cats) {
-      cats = (cats || []).filter(function (c) { return c && c !== '無'; });
+    function fillStageOptions_() {
       const sel = document.getElementById('fuStage');
       if (!sel) return;
-      const list = careStages_().filter(function (st) { return !cats.length || !(st.cats && st.cats.length) || st.cats.some(function (c) { return cats.indexOf(c) !== -1; }); });
-      sel.innerHTML = '<option value="">請選擇</option>' + list.map(function (st) { return '<option>' + esc(st.name) + '</option>'; }).join('');
+      const cat = document.getElementById('fuCategory').value;
+      const all = careStages_();
+      const opt = function (st) { return '<option value="' + esc(st.name) + '" data-i="' + all.indexOf(st) + '">' + esc(st.name) + '</option>'; };
+      const mine = all.filter(function (st) { return cat && st.cat === cat; }), common = all.filter(function (st) { return !st.cat; });
+      if (!cat) {
+        sel.innerHTML = '<option value="">先選關懷大類</option>' + (common.length ? '<optgroup label="通用">' + common.map(opt).join('') + '</optgroup>' : '');
+        return;
+      }
+      sel.innerHTML = '<option value="">請選擇</option>' + mine.map(opt).join('') +
+        (common.length ? '<optgroup label="通用">' + common.map(opt).join('') + '</optgroup>' : '') +
+        (!mine.length && !common.length ? '<option value="" disabled>這個大類還沒有關懷事項（系統管理可以新增）</option>' : '');
     }
     document.getElementById('fuStage').addEventListener('change', function () {
-      const name = this.value;
-      const st = careStages_().filter(function (x) { return x.name === name; })[0];
+      const o = this.options[this.selectedIndex];
+      const st = o && o.dataset.i !== undefined ? careStages_()[Number(o.dataset.i)] : null;
       if (!st) return;
       const nt = document.getElementById('fuNote');
       if (st.note && !nt.value.trim()) nt.value = st.note;          // 預設關懷內容
@@ -1639,11 +1642,11 @@
     });
 
     function resetFollowupForm_() {
-      fillStageOptions_([]);
       document.getElementById('fuDate').value = localDateStr();
       ['fuCategory', 'fuItem', 'fuStage', 'fuOwner', 'fuNote'].forEach(function (id) {
         document.getElementById(id).value = '';
       });
+      fillStageOptions_();
       document.getElementById('fuStatus').value = '待處理';
     }
 
@@ -2177,7 +2180,7 @@
         '<div class="hint" style="margin-top:0;">消費表單、療程細項、關懷表單、療程類別業績都用這份清單，照這個順序顯示。改名或刪除不會改動已經存在的紀錄。</div>' +
         '<div id="catBox"></div></div>';
       html += '<div class="card visible"><div class="section-title">🩹　關懷提醒設定</div>' +
-        '<div class="hint" style="margin-top:0;">消費後的「術後關懷提醒」會依這次的療程大類，只顯示適用的階段（適用大類都不勾＝所有大類都顯示）。選了階段會自動算日期，並帶入預設關懷內容。舊的關懷紀錄不受影響。</div>' +
+        '<div class="hint" style="margin-top:0;">跟療程細項一樣依大類分組。關懷表單先選關懷大類，只會列出這個大類的事項＋「通用」的事項。選了事項會自動算日期，並帶入預設關懷內容。舊的關懷紀錄不受影響。</div>' +
         '<div id="stageBox"></div></div>';
 
       // 系統參數（先選診所）
@@ -2964,39 +2967,39 @@
       }).withFailureHandler(function (e) { showToast(e.message); }).saveCategories({ list: list, dryRun: true });
     }
 
-    // ---------- 管理員：關懷提醒設定 ----------
+    // ---------- 管理員：關懷提醒設定（依大類分組，跟療程細項一樣） ----------
     function renderStageEdit_() {
       const box = document.getElementById('stageBox');
       if (!box) return;
       const cats = ((formSettings && formSettings.cats) || []).filter(function (k) { return k !== '無'; });
-      box.innerHTML = stageEdit.map(function (st, i) {
-        return '<div class="sub-panel" style="margin-top:8px;">' +
-          '<div class="row-2"><div><label style="margin-top:0;">名稱</label><input type="text" value="' + esc(st.name) + '" onchange="stageEdit[' + i + '].name=this.value.trim()"></div>' +
-          '<div><label style="margin-top:0;">幾天後提醒</label><input type="number" min="0" value="' + (Number(st.days) || 0) + '" onchange="stageEdit[' + i + '].days=Number(this.value)||0"></div></div>' +
-          '<label>適用大類（都不勾＝全部）</label><div class="jump-links" style="margin-top:4px;">' + cats.map(function (c) {
-            const on = (st.cats || []).indexOf(c) !== -1;
-            return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 10px 4px 0; font-weight:normal;"><input type="checkbox" style="width:16px; height:16px;"' + (on ? ' checked' : '') +
-              ' onchange="toggleStageCat_(' + i + ', \'' + esc(c) + '\', this.checked)">' + esc(c) + '</label>';
-          }).join('') + '</div>' +
-          '<label>預設關懷內容（選填）</label><textarea onchange="stageEdit[' + i + '].note=this.value">' + esc(st.note || '') + '</textarea>' +
-          '<div class="jump-links"><button class="mini-btn grey" onclick="moveItem_(stageEdit,' + i + ',-1); renderStageEdit_()">↑ 上移</button>' +
-          '<button class="mini-btn grey" onclick="moveItem_(stageEdit,' + i + ',1); renderStageEdit_()">↓ 下移</button>' +
-          '<button class="mini-btn grey" onclick="if(confirm(\'刪除「' + esc(st.name) + '」？舊的關懷紀錄不受影響。\')){stageEdit.splice(' + i + ',1); renderStageEdit_();}">✕ 刪除</button></div></div>';
+      // 通用放最後；已經有事項、但大類被刪掉的也列出來，免得看不到
+      const groups = cats.slice();
+      stageEdit.forEach(function (st) { if (st.cat && groups.indexOf(st.cat) === -1) groups.push(st.cat); });
+      groups.push('');
+      box.innerHTML = groups.map(function (g) {
+        const idx = []; stageEdit.forEach(function (st, i) { if ((st.cat || '') === g) idx.push(i); });
+        return '<div class="group-title">' + (g ? esc(g) : '通用（每個大類都會顯示）') + ' <span class="count-pill">' + idx.length + '</span></div>' +
+          idx.map(function (i, k) {
+            const st = stageEdit[i];
+            return '<div class="sub-panel" style="margin-top:6px;">' +
+              '<div class="row-2"><div><label style="margin-top:0;">事項名稱</label><input type="text" value="' + esc(st.name) + '" onchange="stageEdit[' + i + '].name=this.value.trim()"></div>' +
+              '<div><label style="margin-top:0;">幾天後提醒</label><input type="number" min="0" value="' + (Number(st.days) || 0) + '" onchange="stageEdit[' + i + '].days=Number(this.value)||0"></div></div>' +
+              '<label>預設關懷內容（選填）</label><input type="text" value="' + esc(st.note || '') + '" onchange="stageEdit[' + i + '].note=this.value">' +
+              '<div class="jump-links">' +
+              (k > 0 ? '<button class="mini-btn grey" onclick="swapStage_(' + i + ',' + idx[k - 1] + ')">↑ 上移</button>' : '') +
+              (k < idx.length - 1 ? '<button class="mini-btn grey" onclick="swapStage_(' + i + ',' + idx[k + 1] + ')">↓ 下移</button>' : '') +
+              '<button class="mini-btn grey" onclick="if(confirm(\'刪除「' + esc(st.name || '（未命名）') + '」？舊的關懷紀錄不受影響。\')){stageEdit.splice(' + i + ',1); renderStageEdit_();}">✕ 刪除</button></div></div>';
+          }).join('') +
+          '<button type="button" class="mini-btn" style="margin-top:6px;" data-g="' + esc(g) + '" onclick="stageEdit.push({cat:this.dataset.g, name:\'\', days:0, note:\'\'}); renderStageEdit_()">＋ 新增' + (g ? esc(g) : '通用') + '的關懷事項</button>';
       }).join('') +
-        '<button type="button" class="add-item-btn" onclick="stageEdit.push({name:\'\', days:0, cats:[], note:\'\'}); renderStageEdit_()">＋ 新增關懷階段</button>' +
-        '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="saveStages_()"><span>儲存關懷提醒設定</span></button>';
+        '<button type="button" class="primary-btn" style="margin-top:14px; box-shadow:none;" onclick="saveStages_()"><span>儲存關懷提醒設定</span></button>';
     }
-    function toggleStageCat_(i, c, on) {
-      const a = stageEdit[i].cats || (stageEdit[i].cats = []);
-      const k = a.indexOf(c);
-      if (on && k === -1) a.push(c);
-      if (!on && k !== -1) a.splice(k, 1);
-    }
+    function swapStage_(i, j) { const t = stageEdit[i]; stageEdit[i] = stageEdit[j]; stageEdit[j] = t; renderStageEdit_(); }
     function saveStages_() {
       if (stageEdit.some(function (s) { return !String(s.name || '').trim(); })) { showToast('每個關懷階段都要有名稱'); return; }
       api().withSuccessHandler(function (saved) {
         formSettings = formSettings || {}; formSettings.stages = saved; stageEdit = JSON.parse(JSON.stringify(saved));
-        fillStageOptions_([]); renderStageEdit_();
+        fillStageOptions_(); renderStageEdit_();
         showToast('✅ 關懷提醒設定已儲存');
       }).withFailureHandler(function (e) { showToast(e.message); }).saveCareStages({ list: stageEdit });
     }
