@@ -643,7 +643,7 @@
               <select id="sub1"></select>
             </div>
             <label>具體項目 1</label>
-            <div style="display:flex; gap:8px;"><input type="text" id="item1" placeholder="例如：海芙音波 600發" style="flex:1; min-width:0;"><input type="number" id="qty1" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
+            <input type="text" id="item1" placeholder="例如：海芙音波 600發"><div style="display:flex; gap:8px; margin-top:6px;"><div style="flex:1;"><span style="font-size:12px; color:var(--text-muted);">數量</span><input type="number" id="qty1" placeholder="例如 1000" min="0" step="any" inputmode="decimal"></div><div class="use-now" style="flex:1; display:none;"><span style="font-size:12px; color:var(--text-muted);">今天使用</span><input type="number" id="useNow1" placeholder="沒用填 0" min="0" step="any" inputmode="decimal"></div></div>
           </div>
 
           <div class="item-block" id="itemBlock2" style="display:none;">
@@ -658,7 +658,7 @@
               <select id="sub2"></select>
             </div>
             <label>具體項目 2</label>
-            <div style="display:flex; gap:8px;"><input type="text" id="item2" placeholder="例如：肉毒抬頭紋 20U" style="flex:1; min-width:0;"><input type="number" id="qty2" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
+            <input type="text" id="item2" placeholder="例如：肉毒抬頭紋 20U"><div style="display:flex; gap:8px; margin-top:6px;"><div style="flex:1;"><span style="font-size:12px; color:var(--text-muted);">數量</span><input type="number" id="qty2" placeholder="例如 1000" min="0" step="any" inputmode="decimal"></div><div class="use-now" style="flex:1; display:none;"><span style="font-size:12px; color:var(--text-muted);">今天使用</span><input type="number" id="useNow2" placeholder="沒用填 0" min="0" step="any" inputmode="decimal"></div></div>
           </div>
 
           <div class="item-block" id="itemBlock3" style="display:none;">
@@ -673,7 +673,7 @@
               <select id="sub3"></select>
             </div>
             <label>具體項目 3</label>
-            <div style="display:flex; gap:8px;"><input type="text" id="item3" placeholder="項目名稱" style="flex:1; min-width:0;"><input type="number" id="qty3" placeholder="數量" min="0" step="any" inputmode="decimal" style="width:96px; flex:none;"></div>
+            <input type="text" id="item3" placeholder="項目名稱"><div style="display:flex; gap:8px; margin-top:6px;"><div style="flex:1;"><span style="font-size:12px; color:var(--text-muted);">數量</span><input type="number" id="qty3" placeholder="例如 1000" min="0" step="any" inputmode="decimal"></div><div class="use-now" style="flex:1; display:none;"><span style="font-size:12px; color:var(--text-muted);">今天使用</span><input type="number" id="useNow3" placeholder="沒用填 0" min="0" step="any" inputmode="decimal"></div></div>
           </div>
 
           <button type="button" class="add-item-btn" id="addItemBtn" onclick="revealNextItem()">＋ 新增療程項目</button>
@@ -838,7 +838,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v49（療程大類可新增／數量／課程照 CRM 扣）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v50（療程大類／關懷提醒設定／購買當天使用）</div>
   </div>
 
   <script>
@@ -858,7 +858,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v49';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v50';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1083,9 +1083,21 @@
     // 療程細項（「療程細項」分頁）
     let itemCatalog = {};
     // 療程大類：原本的六類＋「系統管理 → 療程細項」裡新增的大類
+    let formSettings = null;
+    function loadFormSettings_() {
+      api().withSuccessHandler(function (r) { formSettings = r; fillCatOptions_(); fillStageOptions_([]); }).withFailureHandler(function () {}).getFormSettings();
+    }
     function fillCatOptions_() {
-      const base = ['手術', '微整', '電音波', '光療', '美療'];
-      const cats = base.concat(Object.keys(itemCatalog || {}).filter(function (k) { return k && base.indexOf(k) === -1 && k !== '無'; })).concat(['無']);
+      const base = ['手術', '微整', '電音波', '光療', '美療', '點滴', '減重'];
+      const cats = formSettings && formSettings.cats && formSettings.cats.length ? formSettings.cats.slice()
+        : base.concat(Object.keys(itemCatalog || {}).filter(function (k) { return k && base.indexOf(k) === -1 && k !== '無'; })).concat(['無']);
+      ['chCat', 'fuCategory'].forEach(function (id) {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const cur = sel.value, list = id === 'chCat' ? cats.filter(function (k) { return k !== '無'; }) : cats;
+        sel.innerHTML = '<option value="">請選擇</option>' + list.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
+        if (cur) sel.value = cur;
+      });
       ['cat1', 'cat2', 'cat3'].forEach(function (id) {
         const sel = document.getElementById(id);
         if (!sel) return;
@@ -1111,6 +1123,7 @@
         .withFailureHandler(function (err) { console.log('讀取諮詢師名單失敗：' + err.message); })
         .getActiveConsultantList();
       api().withSuccessHandler(function (c) { itemCatalog = c || {}; fillCatOptions_(); }).getItemCatalog();
+      loadFormSettings_();
       api()
         .withSuccessHandler(function (names) { fillDatalist_('doctorList', names); })
         .withFailureHandler(function (err) { console.log('讀取醫師名單失敗：' + err.message); })
@@ -1497,7 +1510,7 @@
 
     function resetTxForm_() {
       document.getElementById('txDate').value = localDateStr();
-      ['cat1', 'item1', 'cat2', 'item2', 'cat3', 'item3', 'qty1', 'qty2', 'qty3', 'txAmount', 'txConsultant', 'txNote'].forEach(function (id) {
+      ['cat1', 'item1', 'cat2', 'item2', 'cat3', 'item3', 'qty1', 'qty2', 'qty3', 'useNow1', 'useNow2', 'useNow3', 'txAmount', 'txConsultant', 'txNote'].forEach(function (id) {
         document.getElementById(id).value = '';
       });
       usedCourseKey = '';
@@ -1539,6 +1552,7 @@
         item3: document.getElementById('item3').value,
         qty1: document.getElementById('qty1').value, qty2: document.getElementById('qty2').value, qty3: document.getElementById('qty3').value,
         courseRef: usedCourseKey,                // 從「未使用課程」點選的是哪一筆（扣剩餘量用）
+        useNow1: document.getElementById('useNow1').value, useNow2: document.getElementById('useNow2').value, useNow3: document.getElementById('useNow3').value,
         amount: amount,
         payType: document.getElementById('txPayType').value,
         receipt: document.getElementById('txReceipt').value.trim(),
@@ -1549,6 +1563,22 @@
         consultant: document.getElementById('txConsultant').value.trim(),
         note: document.getElementById('txNote').value
       };
+
+      // 購買：有數量但「今天使用」沒填 → 先確認
+      if (payload.payType === '全額' || payload.payType === '訂金') {
+        for (let k = 1; k <= 3; k++) {
+          const it = String(payload['item' + k] || '').trim(), q = Number(payload['qty' + k]) || 0, un = String(payload['useNow' + k] || '').trim();
+          if (!it || !(q > 0) || un !== '') continue;
+          if (!confirm('「' + it + '」數量 ' + q + '：今天有使用嗎？\n\n按「確定」＝今天沒有使用（先買）\n按「取消」＝回去填「今天使用」的數量')) {
+            const el = document.getElementById('useNow' + k); el.focus(); return;
+          }
+          payload['useNow' + k] = '0';
+          document.getElementById('useNow' + k).value = '0';
+        }
+        for (let k = 1; k <= 3; k++) {
+          if ((Number(payload['useNow' + k]) || 0) > (Number(payload['qty' + k]) || 0)) { showToast('今天使用不能大於購買數量'); return; }
+        }
+      }
 
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -1573,6 +1603,7 @@
     // 送出消費後：不直接清空，順手帶出術後關懷
     function afterTxSubmitted_(p) {
       document.getElementById('txCard').classList.remove('visible');
+      fillStageOptions_([p.cat1, p.cat2, p.cat3]);
       if (p.cat1 && p.cat1 !== '無') document.getElementById('fuCategory').value = p.cat1;
       if (p.item1) document.getElementById('fuItem').value = p.item1;
       if (p.consultant) document.getElementById('fuOwner').value = p.consultant;
@@ -1581,10 +1612,25 @@
     }
 
     // ---------- 術後關懷提醒 ----------
-    const STAGE_DAYS = { '術後1天關懷': 1, '術後7天拆線': 7, '術後1個月複查': 30, '4個月補打提醒': 120, '定期保養': 60 };
+    // 關懷階段：系統管理 → 關懷提醒設定；依這次消費的大類只顯示適用的階段（沒選大類＝全部）
+    function careStages_() {
+      return (formSettings && formSettings.stages) || [{ name: '術後1天關懷', days: 1, cats: [] }, { name: '術後7天拆線', days: 7, cats: [] },
+        { name: '術後1個月複查', days: 30, cats: [] }, { name: '4個月補打提醒', days: 120, cats: [] }, { name: '定期保養', days: 60, cats: [] }];
+    }
+    function fillStageOptions_(cats) {
+      cats = (cats || []).filter(function (c) { return c && c !== '無'; });
+      const sel = document.getElementById('fuStage');
+      if (!sel) return;
+      const list = careStages_().filter(function (st) { return !cats.length || !(st.cats && st.cats.length) || st.cats.some(function (c) { return cats.indexOf(c) !== -1; }); });
+      sel.innerHTML = '<option value="">請選擇</option>' + list.map(function (st) { return '<option>' + esc(st.name) + '</option>'; }).join('');
+    }
     document.getElementById('fuStage').addEventListener('change', function () {
-      const n = STAGE_DAYS[this.value];
-      if (n == null) return;
+      const name = this.value;
+      const st = careStages_().filter(function (x) { return x.name === name; })[0];
+      if (!st) return;
+      const nt = document.getElementById('fuNote');
+      if (st.note && !nt.value.trim()) nt.value = st.note;          // 預設關懷內容
+      const n = Number(st.days) || 0;
       const base = document.getElementById('txDate').value || localDateStr();
       const parts = base.split('-').map(Number);
       const d = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -1593,6 +1639,7 @@
     });
 
     function resetFollowupForm_() {
+      fillStageOptions_([]);
       document.getElementById('fuDate').value = localDateStr();
       ['fuCategory', 'fuItem', 'fuStage', 'fuOwner', 'fuNote'].forEach(function (id) {
         document.getElementById(id).value = '';
@@ -1714,6 +1761,8 @@
 
     // 服務（不收費）：金額固定 0
     function onPayTypeChange() {
+      const buy = ['全額', '訂金'].indexOf(document.getElementById('txPayType').value) !== -1;
+      document.querySelectorAll('.use-now').forEach(function (el) { el.style.display = buy ? '' : 'none'; if (!buy) el.querySelector('input').value = ''; });
       const amt = document.getElementById('txAmount');
       if (document.getElementById('txPayType').value === '服務') {
         amt.value = '0';
@@ -2115,12 +2164,21 @@
             }).join('') + '</div>';
         }).join('') : '<div class="empty">還沒有細項。</div>') +
         '<div class="row-2" style="margin-top:12px;"><div><label style="margin-top:0;">大類</label>' +
-        '<input type="text" id="adCat" list="adCatList" placeholder="例如：美療"></div>' +
+        '<select id="adCat">' + ((formSettings && formSettings.cats) || ['手術', '微整', '電音波', '光療', '美療', '點滴', '減重']).filter(function (k) { return k !== '無'; })
+          .map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('') + '</select></div>' +
         '<div><label style="margin-top:0;">細項</label><input type="text" id="adSub" placeholder="例如：保濕導入"></div></div>' +
         '<datalist id="adCatList"><option value="手術"></option><option value="微整"></option><option value="電音波"></option><option value="光療"></option><option value="美療"></option></datalist>' +
         '<button type="button" class="add-item-btn" onclick="addCatalog()">＋ 加入清單</button>' +
         '<button type="button" class="primary-btn" id="adCatBtn" style="margin-top:12px; box-shadow:none;" onclick="saveCatalogUI()"><span>儲存療程細項</span></button>' +
         '<div class="hint">按 ✕ 或加入後，記得按「儲存療程細項」才會生效。刪除細項不影響已經輸入過的消費紀錄。</div></div>';
+
+      // 療程大類、關懷提醒設定
+      html += '<div class="card visible"><div class="section-title">🗂️　療程大類</div>' +
+        '<div class="hint" style="margin-top:0;">消費表單、療程細項、關懷表單、療程類別業績都用這份清單，照這個順序顯示。改名或刪除不會改動已經存在的紀錄。</div>' +
+        '<div id="catBox"></div></div>';
+      html += '<div class="card visible"><div class="section-title">🩹　關懷提醒設定</div>' +
+        '<div class="hint" style="margin-top:0;">消費後的「術後關懷提醒」會依這次的療程大類，只顯示適用的階段（適用大類都不勾＝所有大類都顯示）。選了階段會自動算日期，並帶入預設關懷內容。舊的關懷紀錄不受影響。</div>' +
+        '<div id="stageBox"></div></div>';
 
       // 系統參數（先選診所）
       const bp = d.branchParams || {};
@@ -2166,6 +2224,10 @@
 
       document.getElementById('adminBody').innerHTML = html;
       enhanceFileInputs_(document.getElementById('adminBody'));
+      catEdit = ((formSettings && formSettings.cats) || ['手術', '微整', '電音波', '光療', '美療', '點滴', '減重', '無']).slice();
+      stageEdit = JSON.parse(JSON.stringify((formSettings && formSettings.stages) || careStages_()));
+      renderCatEdit_();
+      renderStageEdit_();
       if (adminTempNotice) {
         const t = adminTempNotice;
         adminTempNotice = null;
@@ -2297,7 +2359,9 @@
           '<div class="hint" style="margin-top:0;">依 POS 報表（資料日期：' + esc(up) + '）。點一下＝這次使用這項。</div>' +
           customerCourses.map(function (c, i) {
             return '<div class="candidate" style="margin:8px 0 0; padding:10px 12px;" data-i="' + i + '" onclick="useCourse(this.dataset.i)"><div class="info">' +
-              '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.cat ? ' <span class="pay-tag">' + esc(c.cat) + '</span>' : '') + (c.gift ? ' <span class="pay-tag">贈</span>' : '') + '</div>' +
+              '<div class="name" style="font-size:16px;">' + esc(c.small || c.tab) + (c.cat ? ' <span class="pay-tag">' + esc(c.cat) + '</span>' : '') + (c.gift ? ' <span class="pay-tag">贈</span>' : '') +
+                (c.crmNew ? ' <span class="pay-tag" style="background:#E6ECE1; color:#3F5A35;">CRM 新購 ' + esc(String(c.buyDay).slice(5).replace('-', '/')) + '・待報表確認</span>' : '') +
+                (c.deposit ? ' <span class="pay-tag" style="background:#F8DCD5; color:#9B3F2D;">訂金・尾款未付</span>' : '') + '</div>' +
               '<div class="meta">' + (c.used ? '剩 <b>' + c.est + '</b>（報表 ' + c.left + '，CRM 已扣 ' + c.used + '，待報表確認）'
                 : '剩 <b>' + c.left + '</b>') + (c.price ? '・單價 ' + money(c.price) + '・剩餘 ' + money(c.estAmount) : '') +
               '・' + esc(c.tab) + (customerCourses.length && c.branch ? '・' + esc(c.branch) : '') +
@@ -2871,6 +2935,72 @@
         .setCustomerTest({ phone: c.phone, name: c.name, test: true, dryRun: true });
     }
 
+    // ---------- 管理員：療程大類 ----------
+    let catEdit = [], stageEdit = [];
+    function renderCatEdit_() {
+      const box = document.getElementById('catBox');
+      if (!box) return;
+      box.innerHTML = catEdit.map(function (c, i) {
+        return '<div class="row-2" style="align-items:center; margin-top:6px;"><input type="text" value="' + esc(c) + '" onchange="catEdit[' + i + ']=this.value.trim()">' +
+          '<div class="jump-links" style="margin:0;"><button class="mini-btn grey" onclick="moveItem_(catEdit,' + i + ',-1); renderCatEdit_()">↑</button>' +
+          '<button class="mini-btn grey" onclick="moveItem_(catEdit,' + i + ',1); renderCatEdit_()">↓</button>' +
+          '<button class="mini-btn grey" onclick="catEdit.splice(' + i + ',1); renderCatEdit_()">✕ 刪除</button></div></div>';
+      }).join('') +
+        '<div class="row-2" style="margin-top:10px;"><input type="text" id="newCatName" placeholder="新增大類，例如：點滴"><button type="button" class="mini-btn" onclick="const v=document.getElementById(\'newCatName\').value.trim(); if(v){catEdit.push(v); renderCatEdit_();}">＋ 加入</button></div>' +
+        '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="saveCats_()"><span>儲存療程大類</span></button>';
+    }
+    function moveItem_(arr, i, d) { const j = i + d; if (j < 0 || j >= arr.length) return; const t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
+    function saveCats_() {
+      const list = catEdit.map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+      api().withSuccessHandler(function (r) {
+        const used = r.removed.filter(function (k) { return r.usage[k]; });
+        if (used.length && !confirm('這些大類已經有紀錄用到：\n' + used.map(function (k) { return k + '（' + r.usage[k] + ' 筆）'; }).join('、') +
+          '\n\n拿掉後舊紀錄不會改動，只是之後不能再選。確定儲存？')) return;
+        api().withSuccessHandler(function (saved) {
+          formSettings = formSettings || {}; formSettings.cats = saved; catEdit = saved.slice();
+          fillCatOptions_(); renderCatEdit_(); renderStageEdit_();
+          showToast('✅ 療程大類已儲存');
+        }).withFailureHandler(function (e) { showToast(e.message); }).saveCategories({ list: list });
+      }).withFailureHandler(function (e) { showToast(e.message); }).saveCategories({ list: list, dryRun: true });
+    }
+
+    // ---------- 管理員：關懷提醒設定 ----------
+    function renderStageEdit_() {
+      const box = document.getElementById('stageBox');
+      if (!box) return;
+      const cats = ((formSettings && formSettings.cats) || []).filter(function (k) { return k !== '無'; });
+      box.innerHTML = stageEdit.map(function (st, i) {
+        return '<div class="sub-panel" style="margin-top:8px;">' +
+          '<div class="row-2"><div><label style="margin-top:0;">名稱</label><input type="text" value="' + esc(st.name) + '" onchange="stageEdit[' + i + '].name=this.value.trim()"></div>' +
+          '<div><label style="margin-top:0;">幾天後提醒</label><input type="number" min="0" value="' + (Number(st.days) || 0) + '" onchange="stageEdit[' + i + '].days=Number(this.value)||0"></div></div>' +
+          '<label>適用大類（都不勾＝全部）</label><div class="jump-links" style="margin-top:4px;">' + cats.map(function (c) {
+            const on = (st.cats || []).indexOf(c) !== -1;
+            return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 10px 4px 0; font-weight:normal;"><input type="checkbox" style="width:16px; height:16px;"' + (on ? ' checked' : '') +
+              ' onchange="toggleStageCat_(' + i + ', \'' + esc(c) + '\', this.checked)">' + esc(c) + '</label>';
+          }).join('') + '</div>' +
+          '<label>預設關懷內容（選填）</label><textarea onchange="stageEdit[' + i + '].note=this.value">' + esc(st.note || '') + '</textarea>' +
+          '<div class="jump-links"><button class="mini-btn grey" onclick="moveItem_(stageEdit,' + i + ',-1); renderStageEdit_()">↑ 上移</button>' +
+          '<button class="mini-btn grey" onclick="moveItem_(stageEdit,' + i + ',1); renderStageEdit_()">↓ 下移</button>' +
+          '<button class="mini-btn grey" onclick="if(confirm(\'刪除「' + esc(st.name) + '」？舊的關懷紀錄不受影響。\')){stageEdit.splice(' + i + ',1); renderStageEdit_();}">✕ 刪除</button></div></div>';
+      }).join('') +
+        '<button type="button" class="add-item-btn" onclick="stageEdit.push({name:\'\', days:0, cats:[], note:\'\'}); renderStageEdit_()">＋ 新增關懷階段</button>' +
+        '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="saveStages_()"><span>儲存關懷提醒設定</span></button>';
+    }
+    function toggleStageCat_(i, c, on) {
+      const a = stageEdit[i].cats || (stageEdit[i].cats = []);
+      const k = a.indexOf(c);
+      if (on && k === -1) a.push(c);
+      if (!on && k !== -1) a.splice(k, 1);
+    }
+    function saveStages_() {
+      if (stageEdit.some(function (s) { return !String(s.name || '').trim(); })) { showToast('每個關懷階段都要有名稱'); return; }
+      api().withSuccessHandler(function (saved) {
+        formSettings = formSettings || {}; formSettings.stages = saved; stageEdit = JSON.parse(JSON.stringify(saved));
+        fillStageOptions_([]); renderStageEdit_();
+        showToast('✅ 關懷提醒設定已儲存');
+      }).withFailureHandler(function (e) { showToast(e.message); }).saveCareStages({ list: stageEdit });
+    }
+
     // ---------- 管理員：課程剩餘量差異 ----------
     let cdList = [];
     function loadCourseDiffs_() {
@@ -3083,7 +3213,7 @@
           '<button type="button" class="mini-btn" style="margin-top:8px;" onclick="saveHist_(' + i + ', this)">儲存修改</button></div>';
       } else {
         box.innerHTML = '<div class="sub-panel" style="margin-top:6px;"><label style="margin-top:0;">狀態</label><select class="he-status">' +
-          ['待處理', '已關懷', '已聯繫', '已預約回診'].map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
+          ['待處理', '已關懷', '已聯繫', '已預約回診', '無意願/改期'].map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
           '<label>關懷內容（修改你最後寫的那一則）</label><textarea class="he-text">' + esc(f.text) + '</textarea>' +
           '<button type="button" class="mini-btn" style="margin-top:8px;" onclick="saveHist_(' + i + ', this)">儲存修改</button></div>';
       }
@@ -3846,6 +3976,7 @@
           btn.innerHTML = '<span>儲存療程細項</span>';
           showToast('療程細項已更新');
           api().withSuccessHandler(function (c) { itemCatalog = c || {}; fillCatOptions_(); }).getItemCatalog();
+      loadFormSettings_();
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>儲存療程細項</span>'; showToast(err.message); })
         .saveCatalog(adminData.catalog);
