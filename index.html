@@ -844,7 +844,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51（🔪 手術紀錄）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.1（手術紀錄：生日格式、開放月份、顯示人員）</div>
   </div>
 
   <script>
@@ -864,7 +864,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3039,6 +3039,7 @@
     function knSet_(k, v) { kn[k] = v; loadKnife_(); }
     function renderKnife_() {
       const r = kn.data, card = document.getElementById('knifeCard');
+      if (r.noMonths) { card.innerHTML = '<div class="section-title">🔪　' + (r.manager ? '手術紀錄' : '我的手術紀錄') + '</div><div class="empty">管理員還沒開放手術紀錄的月份。</div>'; return; }
       const ym = function (m) { return m ? m.slice(0, 4) + ' 年 ' + Number(m.slice(5, 7)) + ' 月' : '全部月份'; };
       const wd = function (d) { return ['日', '一', '二', '三', '四', '五', '六'][new Date(d.replace(/-/g, '/')).getDay()]; };
       const sel = function (k, list, all) {
@@ -3098,12 +3099,59 @@
           '<div class="jump-links"><button class="mini-btn" onclick="runKnifeSync_(false)">🔄 立即同步（最近 3 個月）</button>' +
           '<button class="mini-btn grey" onclick="runKnifeSync_(true)">完整同步（全部月份）</button></div>' +
           '<div id="knifeSyncResult"></div>' +
+          knifeVisHtml_(k) +
           '<label>換一份刀表（貼上試算表網址）</label><div class="row-2"><input type="text" id="knifeUrl" placeholder="https://docs.google.com/spreadsheets/d/…">' +
           '<button type="button" class="mini-btn grey" onclick="setKnifeUrl_()">儲存</button></div>' +
           '<label>補資料：匯入刀表的 Excel 檔（例如已經被關掉的舊月份）</label><input type="file" id="knifeFile" accept=".xlsx,.xls" onchange="readKnifeFile_(this)">';
         enhanceFileInputs_(box);
         if (after) after();
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getKnifeInfo();
+    }
+    // 人員可看的月份、顯示的人員
+    let kv = { months: {}, staff: {} };
+    function knifeVisHtml_(k) {
+      kv.months = {}; (k.openMonths || []).forEach(function (m) { kv.months[m] = true; });
+      kv.staff = {}; (k.showStaff || []).forEach(function (n) { kv.staff[n] = true; });
+      kv.info = k;
+      const years = {};
+      (k.months || []).forEach(function (x) { (years[x.m.slice(0, 4)] || (years[x.m.slice(0, 4)] = [])).push(x); });
+      const cb = function (kind, val, on, label) {
+        return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 12px 6px 0; font-weight:normal;"><input type="checkbox" style="width:16px; height:16px;"' +
+          (on ? ' checked' : '') + ' data-k="' + kind + '" data-v="' + esc(val) + '" onchange="kv[this.dataset.k][this.dataset.v]=this.checked">' + label + '</label>';
+      };
+      return '<div class="group-title">👀 諮詢師、分店主管可以看的月份</div>' +
+        '<div class="hint" style="margin-top:0;">沒勾的月份，諮詢師和分店主管都看不到（集團主管、管理員看全部）。還沒勾任何月份前，她們都看不到手術紀錄。</div>' +
+        Object.keys(years).sort().reverse().map(function (y) {
+          return '<div class="sub-panel" style="margin:6px 0;"><b>' + y + ' 年</b>　<a href="#" onclick="kvYear_(\'' + y + '\', true); return false;">整年全選</a>　<a href="#" onclick="kvYear_(\'' + y + '\', false); return false;">清除</a><div style="margin-top:6px;">' +
+            years[y].slice().reverse().map(function (x) { return cb('months', x.m, kv.months[x.m], Number(x.m.slice(5)) + ' 月（' + x.n + '）'); }).join('') + '</div></div>';
+        }).join('') +
+        '<div class="group-title">🙋 顯示的人員（人員選單、台數統計）</div>' +
+        '<div class="hint" style="margin-top:0;">沒勾的人，手術照樣會列出，只是不出現在「全部人員」選單和台數統計。括號是台數、最後一次手術。</div>' +
+        '<div class="jump-links"><button class="mini-btn grey" onclick="kvStaff_(\'all\')">全選</button><button class="mini-btn grey" onclick="kvStaff_(\'active\')">只選在職人員</button><button class="mini-btn grey" onclick="kvStaff_(\'none\')">清除</button></div>' +
+        '<div class="sub-panel" style="margin:6px 0;" id="kvStaffBox">' + kvStaffHtml_() + '</div>' +
+        '<button type="button" class="primary-btn" style="margin:8px 0 4px; box-shadow:none;" onclick="saveKnifeVis_()"><span>儲存顯示設定</span></button>';
+    }
+    function kvStaffHtml_() {
+      return (kv.info.staff || []).map(function (s) {
+        const tag = s.active ? '' : s.known ? '〔離職〕' : '〔對不到人員〕';
+        return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 12px 6px 0; font-weight:normal;"><input type="checkbox" style="width:16px; height:16px;"' +
+          (kv.staff[s.name] ? ' checked' : '') + ' data-v="' + esc(s.name) + '" onchange="kv.staff[this.dataset.v]=this.checked">' +
+          esc(s.name) + '<span class="row-meta">' + tag + '（' + s.n + ' 台，' + esc(s.last.replace(/-/g, '/')) + '）</span></label>';
+      }).join('') || '<div class="row-meta">還沒有手術資料，請先同步。</div>';
+    }
+    function kvYear_(y, on) {
+      (kv.info.months || []).forEach(function (x) { if (x.m.slice(0, 4) === y) kv.months[x.m] = on; });
+      document.querySelectorAll('#knifeAdminBox input[data-k="months"]').forEach(function (el) { if (el.dataset.v.slice(0, 4) === y) el.checked = on; });
+    }
+    function kvStaff_(mode) {
+      (kv.info.staff || []).forEach(function (s) { kv.staff[s.name] = mode === 'all' || (mode === 'active' && s.active); });
+      document.getElementById('kvStaffBox').innerHTML = kvStaffHtml_();
+    }
+    function saveKnifeVis_() {
+      const months = Object.keys(kv.months).filter(function (m) { return kv.months[m]; });
+      const staff = Object.keys(kv.staff).filter(function (n) { return kv.staff[n]; });
+      api().withSuccessHandler(function () { showToast('✅ 已儲存：開放 ' + months.length + ' 個月份、顯示 ' + staff.length + ' 位人員'); kn.data = null; kn.inited = false; })
+        .withFailureHandler(function (err) { showToast(err.message); }).saveKnifeVisibility({ months: months, staff: staff });
     }
     function showKnifeResult_(r) {
       const box = document.getElementById('knifeSyncResult');
