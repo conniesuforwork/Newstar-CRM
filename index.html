@@ -370,6 +370,7 @@
       <div class="tabs">
         <button class="tab-btn active" id="tabEntry" onclick="switchTab('entry')">📝 建檔／消費</button>
         <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 我的業績<span id="perfBadge" class="tab-badge" style="display:none;"></span></button>
+        <button class="tab-btn" id="tabKnife" style="display:none;" onclick="switchTab('knife')">🔪 手術紀錄</button>
         <button class="tab-btn" id="tabAdmin" style="display:none;" onclick="switchTab('admin')">⚙️ 系統管理</button>
       </div>
       <div class="steps" id="stepsBar">
@@ -805,6 +806,11 @@
       </div>
 
       <!-- ===================== 分頁二：我的業績 ===================== -->
+      <!-- ===================== 手術紀錄（從刀表同步） ===================== -->
+      <div id="knifeView" style="display:none;">
+        <div class="card visible" id="knifeCard"><div class="empty">讀取中...</div></div>
+      </div>
+
       <!-- ===================== 分頁三：系統管理（管理員） ===================== -->
       <div id="adminView" style="display:none;">
         <div id="adminBody"><div class="card visible"><div class="empty">讀取中...</div></div></div>
@@ -834,7 +840,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v50.2（燈號顯示進度與達成率）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51（🔪 手術紀錄）</div>
   </div>
 
   <script>
@@ -854,7 +860,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v50.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1006,6 +1012,7 @@
       document.getElementById('perfBody').innerHTML = '';
       document.getElementById('adminBody').innerHTML = '';
       document.getElementById('tabAdmin').style.display = 'none';
+      document.getElementById('tabKnife').style.display = 'none';
       document.getElementById('txMeBtn').style.display = 'none';
       document.body.className = 'logged-out';
       resetAll();
@@ -1128,7 +1135,7 @@
 
     // ---------- 分頁切換 ----------
     function switchTab(tab) {
-      ['entry', 'perf', 'admin'].forEach(function (t) {
+      ['entry', 'perf', 'admin', 'knife'].forEach(function (t) {
         document.getElementById(t + 'View').style.display = t === tab ? 'block' : 'none';
         document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
       });
@@ -1137,6 +1144,7 @@
       window.scrollTo(0, 0);
       if (tab === 'perf' && perfUser && perfStale) loadPerf();
       if (tab === 'admin') loadAdmin();
+      if (tab === 'knife') loadKnife_();
     }
 
     function myName_() { return perfUser ? perfUser.name : ''; }
@@ -1183,6 +1191,7 @@
             : '只能輸入 ' + days + ' 天內的消費；每月 ' + (u.closeDay || 2) + ' 日關上個月的帳。';
           if (u.isOther) document.body.classList.add('role-other');
           if (u.sysAdmin) document.getElementById('tabAdmin').style.display = 'block';
+          document.getElementById('tabKnife').style.display = u.canKnife ? 'block' : 'none';
           if (document.getElementById('perfView').style.display !== 'none') loadPerf();
         })
         .withFailureHandler(function (err) {
@@ -1996,6 +2005,12 @@
         '<label>選擇檔案（營業報表）</label><input type="file" id="fiFile" accept=".xlsx,.xls" style="font-size:15px;" onchange="readFinanceFile(this)">' +
         '<div class="hint">會列出檔案裡每個「月份（診所）」分頁，從分頁名稱自動判斷診所。</div>' +
         '<div id="fiPreview"></div></div>';
+
+      // 刀表同步
+      html += '<div class="card visible"><div class="section-title">🔪　刀表同步（手術紀錄）</div>' +
+        '<div class="hint" style="margin-top:0;">系統用你的帳號讀刀表（只讀、不會改到刀表），存成 CRM 的手術紀錄。每天清晨自動同步最近 3 個月；' +
+        '刀表被關掉或刪掉的月份，CRM 會保留最後一次同步的內容。第一次請按「完整同步」，把以前的月份（含隱藏的分頁）都存進來。</div>' +
+        '<div id="knifeAdminBox"><button type="button" class="add-item-btn" onclick="loadKnifeAdmin_()">載入</button></div></div>';
 
       // 課程剩餘量差異
       html += '<div class="card visible"><div class="section-title">📋　課程剩餘量差異</div>' +
@@ -3005,6 +3020,139 @@
       }).withFailureHandler(function (e) { showToast(e.message); }).saveCareStages({ list: stageEdit });
     }
 
+    // ---------- 🔪 手術紀錄 ----------
+    const kn = { month: '', q: '', suit: '', staff: '', clinic: '', doctor: '', data: null, inited: false };
+    function loadKnife_() {
+      const card = document.getElementById('knifeCard');
+      if (kn.data) card.style.opacity = '0.6';
+      api().withSuccessHandler(function (r) {
+        card.style.opacity = '';
+        if (!kn.inited) { kn.inited = true; if (r.months.length && !kn.month) { kn.month = r.months[0]; return loadKnife_(); } }
+        kn.data = r; renderKnife_();
+      }).withFailureHandler(function (err) { card.style.opacity = ''; card.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .getSurgeries({ month: kn.month, q: kn.q, suit: kn.suit, staff: kn.staff, clinic: kn.clinic, doctor: kn.doctor });
+    }
+    function knSet_(k, v) { kn[k] = v; loadKnife_(); }
+    function renderKnife_() {
+      const r = kn.data, card = document.getElementById('knifeCard');
+      const ym = function (m) { return m ? m.slice(0, 4) + ' 年 ' + Number(m.slice(5, 7)) + ' 月' : '全部月份'; };
+      const wd = function (d) { return ['日', '一', '二', '三', '四', '五', '六'][new Date(d.replace(/-/g, '/')).getDay()]; };
+      const sel = function (k, list, all) {
+        return '<select onchange="knSet_(\'' + k + '\', this.value)" style="width:auto;"><option value="">' + all + '</option>' +
+          list.map(function (v) { return '<option' + (v === kn[k] ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
+      };
+      let h = '<div class="section-title" style="justify-content:space-between;">🔪　' + (r.manager ? '手術紀錄' : '我的手術紀錄') +
+        '<span class="row-meta" style="font-weight:normal;">' + (r.last ? '刀表同步 ' + esc(r.last.at) : '還沒同步過') + '</span></div>' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">' +
+        '<select onchange="knSet_(\'month\', this.value)" style="width:auto;"><option value="">全部月份</option>' +
+          r.months.map(function (m) { return '<option value="' + m + '"' + (m === kn.month ? ' selected' : '') + '>' + ym(m) + '</option>'; }).join('') + '</select>' +
+        '<select onchange="knSet_(\'suit\', this.value)" style="width:auto;"><option value="">術後加壓物品：全部</option>' +
+          '<option value="yes"' + (kn.suit === 'yes' ? ' selected' : '') + '>有術後加壓物品</option><option value="no"' + (kn.suit === 'no' ? ' selected' : '') + '>沒有</option></select>' +
+        (r.manager ? (r.clinics.length > 1 ? sel('clinic', r.clinics, '全部診所') : '') + sel('staff', r.byStaff.map(function (x) { return x.name; }).filter(function (x) { return x !== '（未填）'; }).sort(), '全部人員') + sel('doctor', r.doctors.filter(function (x) { return x !== '（未填）'; }), '全部醫師') : '') +
+        '</div>' +
+        '<input type="text" placeholder="搜尋客人姓名' + (r.manager ? '或電話' : '') + '" value="' + esc(kn.q) + '" style="margin-top:8px;" onkeydown="if(event.key===\'Enter\') knSet_(\'q\', this.value.trim())" onblur="if(this.value.trim()!==kn.q) knSet_(\'q\', this.value.trim())">' +
+        '<div class="sub-panel" style="margin:10px 0;">' + ym(kn.month) + '共 <b>' + r.total + '</b> 台、有術後加壓物品 <b>' + r.withSuit + '</b> 台' +
+          (r.total > r.list.length ? '<br><span class="row-meta">只顯示最新 ' + r.list.length + ' 台，請用月份或搜尋縮小範圍</span>' : '') + '</div>';
+      if (r.manager && (r.byStaff.length || r.byDoctor.length)) {
+        const chips = function (a) { return a.map(function (x) { return '<span class="mini-btn grey" style="cursor:default;">' + esc(x.name) + ' ' + x.n + '</span>'; }).join(''); };
+        h += '<details style="margin-bottom:10px;"><summary class="row-meta" style="cursor:pointer;">📊 每位人員、每位醫師的台數</summary>' +
+          '<div class="group-title">服務人員</div><div class="jump-links">' + chips(r.byStaff) + '</div>' +
+          '<div class="group-title">執刀醫師</div><div class="jump-links">' + chips(r.byDoctor) + '</div></details>' +
+          '<button type="button" class="mini-btn grey" style="margin-bottom:8px;" onclick="exportKnife_()">⬇️ 匯出 Excel</button>';
+      }
+      h += r.list.length ? r.list.map(function (x) {
+        return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.date.slice(5).replace('-', '/')) + '（' + wd(x.date) + '）' + esc(x.time) + '　' + esc(x.name) + '</span>' +
+          '<span class="row-meta">' + esc(x.clinic.replace('診所', '')) + '</span></div>' +
+          '<div class="row-meta" style="line-height:1.7;">術式：' + esc(x.proc) + (x.anes ? '（' + esc(x.anes) + '）' : '') +
+          '<br>執刀：<b>' + esc(x.doctor || '（未填）') + '</b>　服務：<b>' + esc(x.staff || '（未填）') + '</b>' +
+          '<br>術後加壓物品：' + (x.suit ? '<b style="color:#3F5A35;">' + esc(x.suit) + '</b>' : '無') +
+          (x.notes ? '<br>注意事項：' + esc(x.notes) : '') +
+          (r.manager ? '<br>' + (x.phone ? '電話 ' + esc(x.phone) + '　' : '') + (x.bday ? '生日 ' + esc(x.bday) + '　' : '') + (x.money ? '備註 ' + esc(x.money) : '') +
+            (x.team ? '<br><span style="font-size:12px;">' + esc(x.team) + '</span>' : '') : '') + '</div></div>';
+      }).join('') : '<div class="empty">' + (r.last ? '沒有符合的手術紀錄。' : '還沒有同步刀表，請管理員到「系統管理 → 🔪 刀表同步」按「完整同步」。') + '</div>';
+      card.innerHTML = h;
+    }
+    function exportKnife_() {
+      const r = kn.data;
+      loadSheetJs_(function () {
+        const rows = [['日期', '時間', '診所', '客人', '生日', '電話', '術式', '麻醉', '執刀醫師', '服務人員', '術後加壓物品', '注意事項', '備註（金額）', '團隊']].concat(r.list.map(function (x) {
+          return [x.date, x.time, x.clinic, x.name, x.bday || '', x.phone || '', x.proc, x.anes, x.doctor, x.staff, x.suit, x.notes, x.money || '', x.team || ''];
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '手術紀錄');
+        XLSX.writeFile(wb, '手術紀錄_' + (kn.month || '全部') + '.xlsx');
+      });
+    }
+
+    // ---------- 管理員：刀表同步 ----------
+    function loadKnifeAdmin_(after) {
+      const box = document.getElementById('knifeAdminBox');
+      box.innerHTML = '<div class="empty">讀取中...</div>';
+      api().withSuccessHandler(function (k) {
+        box.innerHTML = '<div class="sub-panel">刀表：<a href="' + esc(k.url) + '" target="_blank">開啟刀表</a>　｜　CRM 已存 <b>' + k.count + '</b> 台' +
+          '<br><span class="row-meta">上次同步：' + (k.last ? esc(k.last.at) + '（' + esc(k.last.from) + '）' : '還沒同步過') + '</span></div>' +
+          '<div class="jump-links"><button class="mini-btn" onclick="runKnifeSync_(false)">🔄 立即同步（最近 3 個月）</button>' +
+          '<button class="mini-btn grey" onclick="runKnifeSync_(true)">完整同步（全部月份）</button></div>' +
+          '<div id="knifeSyncResult"></div>' +
+          '<label>換一份刀表（貼上試算表網址）</label><div class="row-2"><input type="text" id="knifeUrl" placeholder="https://docs.google.com/spreadsheets/d/…">' +
+          '<button type="button" class="mini-btn grey" onclick="setKnifeUrl_()">儲存</button></div>' +
+          '<label>補資料：匯入刀表的 Excel 檔（例如已經被關掉的舊月份）</label><input type="file" id="knifeFile" accept=".xlsx,.xls" onchange="readKnifeFile_(this)">';
+        enhanceFileInputs_(box);
+        if (after) after();
+      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getKnifeInfo();
+    }
+    function showKnifeResult_(r) {
+      const box = document.getElementById('knifeSyncResult');
+      box.innerHTML = '<div class="sub-panel">✅ 同步完成：' + r.sheets.length + ' 個分頁、<b>' + r.count + '</b> 台' +
+        (r.sheets.length ? '<br><span class="row-meta">分頁：' + esc(r.sheets[0]) + (r.sheets.length > 1 ? '～' + esc(r.sheets[r.sheets.length - 1]) : '') + '</span>' : '') +
+        (r.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到人員（請到人員管理設定別名，再同步一次）</div><div class="row-meta">' + r.unresolved.map(esc).join('、') + '</div>' : '') + '</div>';
+      kn.data = null; kn.inited = false;
+    }
+    function runKnifeSync_(full) {
+      if (full && !confirm('完整同步會讀刀表的全部月份，可能需要 1～3 分鐘，確定？')) return;
+      document.getElementById('knifeSyncResult').innerHTML = '<div class="empty">同步中，請稍候…</div>';
+      api().withSuccessHandler(function (r) { loadKnifeAdmin_(function () { showKnifeResult_(r); }); })
+        .withFailureHandler(function (err) { document.getElementById('knifeSyncResult').innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+        .syncSurgeries({ full: full });
+    }
+    function setKnifeUrl_() {
+      api().withSuccessHandler(function () { showToast('✅ 已設定刀表網址'); loadKnifeAdmin_(); })
+        .withFailureHandler(function (err) { showToast(err.message); }).setKnifeSource({ url: document.getElementById('knifeUrl').value });
+    }
+    function readKnifeFile_(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const box = document.getElementById('knifeSyncResult');
+      box.innerHTML = '<div class="empty">讀取中…</div>';
+      loadSheetJs_(function () {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const sheets = {};
+            wb.SheetNames.forEach(function (n) {
+              if (!/^\d{5}$/.test(n)) return;
+              const ws = wb.Sheets[n], cells = [];
+              Object.keys(ws).forEach(function (a) {
+                if (a.charAt(0) === '!') return;
+                const rc = XLSX.utils.decode_cell(a), v = ws[a].w != null ? ws[a].w : ws[a].v;
+                if (rc.c < 26 && v != null && String(v).trim()) cells.push([rc.r + 1, rc.c + 1, String(v)]);
+              });
+              sheets[n] = cells;
+            });
+            const names = Object.keys(sheets).sort();
+            if (!names.length) { box.innerHTML = '<div class="empty">檔案裡沒有刀表的分頁（分頁名稱要像 11510）。</div>'; return; }
+            if (!confirm('匯入 ' + names.length + ' 個分頁（' + names[0] + '～' + names[names.length - 1] + '）？這些月份會以檔案內容為準。')) { box.innerHTML = ''; return; }
+            box.innerHTML = '<div class="empty">匯入中…</div>';
+            api().withSuccessHandler(function (r) { loadKnifeAdmin_(function () { showKnifeResult_(r); }); })
+              .withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
+              .importSurgeryFile({ fileName: file.name, sheets: sheets });
+          } catch (err) { box.innerHTML = '<div class="empty">檔案讀取失敗：' + esc(err.message) + '</div>'; }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
     // ---------- 管理員：課程剩餘量差異 ----------
     let cdList = [];
     function loadCourseDiffs_() {
@@ -3553,7 +3701,7 @@
       const ph = selectedCustomer && selectedCustomer.phone;
       if (!ph && !(selectedCustomer && selectedCustomer.custKey)) { showToast('請先選擇顧客'); return; }
       box.innerHTML = '<div class="empty">讀取中...</div>';
-      const tag = { '消費': 'pay-tag', '諮詢': 'dept-tag', '關懷': 'new-tag' };
+      const tag = { '消費': 'pay-tag', '諮詢': 'dept-tag', '關懷': 'new-tag', '手術': 'new-tag' };
       api().withSuccessHandler(function (list) {
         histList = list;
         box.innerHTML = '<div class="sub-panel">' + (list.length ? list.map(function (e, i) {
