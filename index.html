@@ -352,6 +352,10 @@
 
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       #toast { white-space: pre-line; }   /* 說明訊息可以換行 */
+      /* 上方分頁：手機上 4 個分頁放不下完整名稱，改用短名稱 */
+    .tab-btn { white-space: nowrap; }
+    .tab-btn .ts { display: none; }
+    @media (max-width: 560px) { .tab-btn .tl { display: none; } .tab-btn .ts { display: inline; } }
   </style>
 </head>
 <body class="logged-out">
@@ -368,10 +372,10 @@
         </div>
       </div>
       <div class="tabs">
-        <button class="tab-btn active" id="tabEntry" onclick="switchTab('entry')">📝 建檔／消費</button>
-        <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 我的業績<span id="perfBadge" class="tab-badge" style="display:none;"></span></button>
-        <button class="tab-btn" id="tabKnife" style="display:none;" onclick="switchTab('knife')">🔪 手術紀錄</button>
-        <button class="tab-btn" id="tabAdmin" style="display:none;" onclick="switchTab('admin')">⚙️ 系統管理</button>
+        <button class="tab-btn active" id="tabEntry" onclick="switchTab('entry')">📝 <span class="tl">建檔／消費</span><span class="ts">建檔</span></button>
+        <button class="tab-btn" id="tabPerf" onclick="switchTab('perf')">📊 <span class="tl">我的業績</span><span class="ts">業績</span><span id="perfBadge" class="tab-badge" style="display:none;"></span></button>
+        <button class="tab-btn" id="tabKnife" style="display:none;" onclick="switchTab('knife')">🔪 <span class="tl">手術紀錄</span><span class="ts">手術</span></button>
+        <button class="tab-btn" id="tabAdmin" style="display:none;" onclick="switchTab('admin')">⚙️ <span class="tl">系統管理</span><span class="ts">管理</span></button>
       </div>
       <div class="steps" id="stepsBar">
         <div class="step-dot active" id="dot1"></div>
