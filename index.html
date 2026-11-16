@@ -844,7 +844,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.2（刀表名稱／手術紀錄顯示設定）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.3（手術紀錄：只有管理員看全部月份）</div>
   </div>
 
   <script>
@@ -864,7 +864,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3122,8 +3122,8 @@
         return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 12px 6px 0; font-weight:normal;"><input type="checkbox" style="width:16px; height:16px;"' +
           (on ? ' checked' : '') + ' data-k="' + kind + '" data-v="' + esc(val) + '" onchange="kv[this.dataset.k][this.dataset.v]=this.checked">' + label + '</label>';
       };
-      return '<div class="group-title">👀 諮詢師、分店主管可以看的月份</div>' +
-        '<div class="hint" style="margin-top:0;">沒勾的月份，諮詢師和分店主管都看不到（集團主管、管理員看全部）。還沒勾任何月份前，她們都看不到手術紀錄。</div>' +
+      return '<div class="group-title">👀 開放查看的月份</div>' +
+        '<div class="hint" style="margin-top:0;">除了管理員，所有人（集團主管、部門主管、分店主管、諮詢師）都只看得到勾選的月份，顧客頁的手術紀錄也一樣。還沒勾任何月份前，她們都看不到手術紀錄。</div>' +
         Object.keys(years).sort().reverse().map(function (y) {
           return '<div class="sub-panel" style="margin:6px 0;"><b>' + y + ' 年</b>　<a href="#" onclick="kvYear_(\'' + y + '\', true); return false;">整年全選</a>　<a href="#" onclick="kvYear_(\'' + y + '\', false); return false;">清除</a><div style="margin-top:6px;">' +
             years[y].slice().reverse().map(function (x) { return cb('months', x.m, kv.months[x.m], Number(x.m.slice(5)) + ' 月（' + x.n + '）'); }).join('') + '</div></div>';
