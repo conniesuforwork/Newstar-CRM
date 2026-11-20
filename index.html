@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.4（系統管理分區收合／匯入後自動清空）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.5（業績畫面分區收合）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.4';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.5';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -4625,6 +4625,7 @@
         html += targetCardHtml();
       }
       document.getElementById('perfBody').innerHTML = html;
+      perfGroup_('team');
       if (document.getElementById('mkBox')) { renderMkCtl_(); document.getElementById('mkBox').innerHTML = '<div class="empty">選好區間後按「查詢」。</div>'; }
       if (d.deptHead) return;
       loadClinicTargets_(d.monthKey);
@@ -4799,6 +4800,113 @@
         '內容：總覽、每一筆消費明細、單月重複消費、Google 評論、術後關懷，可用來核對業績。');
 
       document.getElementById('perfBody').innerHTML = html;
+      perfGroup_('mine');
+    }
+
+    // ---------- 業績畫面：分區收合（最上面的總覽固定不收） ----------
+    // items：卡片標題裡的字，或 #卡片 id（之後才載入內容的卡片）
+    const PERF_GROUPS = {
+      mine: [
+        { k: 'cust', t: '📋 顧客經營', s: '📋 顧客', items: ['我的關懷待辦', '我的顧客', '#reviewCard'] },
+        { k: 'detail', t: '💰 業績明細', s: '💰 明細', items: ['新客／舊客業績', '本月每日業績', '#dealCard', '我的收款方式', '店內貢獻度', '張拆帳單', '我的業績異動'] },
+        { k: 'rep', t: '📄 月報', s: '📄 月報', items: ['（Excel）'] }
+      ],
+      team: [
+        { k: 'today', t: '📅 今日與進度', s: '📅 今日', items: ['#dailyCard', '本月進度', '#clinicTargetCard'] },
+        { k: 'people', t: '👥 人員', s: '👥 人員', items: ['諮詢師業績', '#targetCard'] },
+        { k: 'ana', t: '💰 業績分析', s: '💰 分析', items: ['各診所', '療程類別業績', '品項銷售', '付款結構', 'Google 評論進度', '行銷新客分析'] },
+        { k: 'todo', t: '🧩 待處理', s: '🧩 待處理', items: ['對帳', '業績異動', '#unassignedCard', '#takeoverCard', '#courseSumCard'] },
+        { k: 'rep', t: '📄 月報', s: '📄 月報', items: ['（Excel）'] }
+      ]
+    };
+    const PERF_OPEN_DEFAULT = { mine: { cust: true }, team: { today: true, people: true } };
+    let perfOpen = (function () {
+      try { const v = JSON.parse(localStorage.getItem('crmPerfOpen') || 'null'); if (v && v.mine && v.team) return v; } catch (e) {}
+      return JSON.parse(JSON.stringify(PERF_OPEN_DEFAULT));
+    })();
+    let perfObs = null;
+    function perfGroup_(view) {
+      const body = document.getElementById('perfBody');
+      const groups = PERF_GROUPS[view], open = perfOpen[view];
+      const kids = Array.prototype.slice.call(body.children);
+      const used = [];
+      const hit = function (el, kw) {
+        if (kw.charAt(0) === '#') return el.id === kw.slice(1);
+        const t = el.querySelector && el.querySelector('.section-title');
+        return !!t && t.textContent.indexOf(kw) !== -1;
+      };
+      const wraps = groups.map(function (g) {
+        const w = document.createElement('div');
+        w.className = 'ag' + (open[g.k] ? '' : ' closed');
+        w.id = 'pg_' + g.k;
+        w.dataset.view = view;
+        w.innerHTML = '<button type="button" class="ag-head" data-k="' + g.k + '" onclick="pgOpen_(this.dataset.k)"><span>' + g.t +
+          '<span class="pg-badge" style="margin-left:8px; font-size:13.5px; color:#9B3F2D;"></span></span><span class="ag-n"></span></button><div class="ag-body"></div>';
+        const b = w.querySelector('.ag-body');
+        g.items.forEach(function (kw) {
+          for (let i = 0; i < kids.length; i++) {
+            if (used.indexOf(i) === -1 && hit(kids[i], kw)) { used.push(i); b.appendChild(kids[i]); break; }
+          }
+        });
+        return w;
+      });
+      // 沒分到的（上方的總覽、切換按鈕）留在最上面，順序不變
+      const nav = document.createElement('div');
+      nav.className = 'ag-nav';
+      nav.innerHTML = groups.map(function (g) { return '<button type="button" data-k="' + g.k + '" onclick="pgJump_(this.dataset.k)">' + g.s + '</button>'; }).join('');
+      body.appendChild(nav);
+      wraps.forEach(function (w) { if (w.querySelector('.ag-body').children.length) body.appendChild(w); else nav.querySelector('[data-k="' + w.id.slice(3) + '"]').remove(); });
+      const tb = document.querySelector('.app-frame .topbar');
+      const top = tb && getComputedStyle(tb).position === 'sticky' ? tb.offsetHeight : 0;
+      nav.style.top = top + 'px';
+      wraps.forEach(function (w) { w.style.scrollMarginTop = (top + 64) + 'px'; });
+      pgHead_();
+      // 之後才載入的卡片（待承接、承接申請、關懷…）內容變了，就更新標題旁的數字
+      if (perfObs) perfObs.disconnect();
+      if (window.MutationObserver) {
+        let tm = null;
+        perfObs = new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(pgHead_, 150); });
+        wraps.forEach(function (w) { perfObs.observe(w.querySelector('.ag-body'), { childList: true, subtree: true }); });
+      }
+    }
+    // 標題旁：收合狀態、要處理的數字
+    function pgHead_() {
+      const pill = function (root, word) {
+        let n = 0;
+        root.querySelectorAll('.group-title, .section-title').forEach(function (t) {
+          if (t.textContent.indexOf(word) !== -1) { const p = t.querySelector('.count-pill'); if (p) n += parseInt(p.textContent, 10) || 0; }
+        });
+        return n;
+      };
+      document.querySelectorAll('#perfBody .ag').forEach(function (w) {
+        const k = w.id.slice(3), on = !!perfOpen[w.dataset.view][k];
+        w.classList.toggle('closed', !on);
+        w.querySelector('.ag-n').textContent = on ? '▾ 收合' : '▸ 展開';
+        const b = w.querySelector('.ag-body'), out = [];
+        if (k === 'cust') { const n = pill(b, '逾期'); if (n) out.push('🔴 逾期 ' + n); }
+        if (k === 'todo') {
+          const ua = pill(b, '待承接'), tk = pill(b, '承接申請');
+          if (ua) out.push('待承接 ' + ua);
+          if (tk) out.push('承接申請 ' + tk);
+        }
+        w.querySelector('.pg-badge').textContent = out.join('　');
+      });
+      document.querySelectorAll('#perfBody .ag-nav button').forEach(function (btn) {
+        const w = document.getElementById('pg_' + btn.dataset.k);
+        btn.classList.toggle('on', !!(w && perfOpen[w.dataset.view][btn.dataset.k]));
+      });
+    }
+    function pgOpen_(k, force) {
+      const w = document.getElementById('pg_' + k);
+      if (!w) return;
+      const st = perfOpen[w.dataset.view];
+      st[k] = force ? true : !st[k];
+      try { localStorage.setItem('crmPerfOpen', JSON.stringify(perfOpen)); } catch (e) {}
+      pgHead_();
+    }
+    function pgJump_(k) {
+      pgOpen_(k, true);
+      document.getElementById('pg_' + k).scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function noBlock(label, sales, target, pct, foot) {
