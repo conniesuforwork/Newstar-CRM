@@ -334,6 +334,18 @@
     }
     .mini-btn.brown { background: var(--primary-light); color: var(--primary-dark); }
     .mini-btn.grey { background: #EFEAE4; color: var(--text-muted); }
+    /* 系統管理分區 */
+    .ag-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 6px; background: var(--bg); padding: 8px 0; margin-bottom: 6px; }
+    .ag-nav button { flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 9px 4px;
+      font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+    .ag-nav button.on { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
+    .ag { margin-bottom: 12px; scroll-margin-top: 70px; }
+    .ag-head { display: flex; justify-content: space-between; align-items: center; width: 100%; border: none; cursor: pointer; font-family: inherit;
+      background: var(--primary-light); color: var(--primary-dark); border-radius: var(--radius-md); padding: 14px 16px; font-size: 17px; font-weight: 800; margin-bottom: 10px; }
+    .ag-head .ag-n { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+    .ag.closed .ag-body { display: none; }
+    .imp-last { margin-top: 10px; }
+    .imp-last .done-bar { display: block; margin-bottom: 0; font-size: 14.5px; }
     .resched { display: none; gap: 6px; margin-top: 8px; align-items: center; }
     .resched input { flex: 1; padding: 10px 12px; font-size: 16px; }
     .fu-item.busy { opacity: 0.45; pointer-events: none; }
@@ -844,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.3（手術紀錄：只有管理員看全部月份）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.4（系統管理分區收合／匯入後自動清空）</div>
   </div>
 
   <script>
@@ -864,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.4';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1954,11 +1966,16 @@
     let paramDept = '';            // ''＝全部顧客；'美容部'＝負責人是美容部的顧客
     function paramScope_() { return paramDept ? (paramBranch || '全集團') + '・美容部' : paramBranch; }
 
-    function loadAdmin() {
+    function loadAdmin(keepScroll) {
       const body = document.getElementById('adminBody');
       body.style.opacity = '0.5';
       api()
-        .withSuccessHandler(function (d) { body.style.opacity = '1'; adminData = d; renderAdmin(); })
+        .withSuccessHandler(function (d) {
+          const y = window.scrollY;
+          body.style.opacity = '1'; adminData = d; renderAdmin();
+          if (keepScroll) window.scrollTo(0, y);
+          loadBatches_(true);
+        })
         .withFailureHandler(function (err) { body.style.opacity = '1'; body.innerHTML = '<div class="card visible"><div class="empty">' + esc(err.message) + '</div></div>'; })
         .getAdminData();
     }
@@ -2248,6 +2265,9 @@
 
       document.getElementById('adminBody').innerHTML = html;
       enhanceFileInputs_(document.getElementById('adminBody'));
+      adminGroup_();
+      paintImpLast_();
+      if (bHtml) document.getElementById('bBox').innerHTML = bHtml;
       catEdit = ((formSettings && formSettings.cats) || ['手術', '微整', '電音波', '光療', '美療', '點滴', '減重', '無']).slice();
       stageEdit = JSON.parse(JSON.stringify((formSettings && formSettings.stages) || careStages_()));
       renderCatEdit_();
@@ -2260,8 +2280,117 @@
           '<div class="temp-pw">' + esc(t.temp) + '</div>登入帳號：' + esc(t.email) +
           '<br>請把帳號和初始密碼親自交給她本人，第一次登入會要求改密碼，<b>7 天內</b>沒登入改掉就會失效。<b>這組密碼只會顯示這一次</b>，系統不會保存。' +
           '<br><button class="link-btn" onclick="document.getElementById(\'personForm\').innerHTML=\'\'">我已抄下，關閉</button></div>';
+        agOpen_('set', true);
         document.getElementById('personForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+    }
+
+    // ---------- 系統管理：分成 4 區、可以收合 ----------
+    const ADMIN_GROUPS = [
+      { k: 'imp', t: '📥 匯入報表', s: '📥 匯入', items: ['匯入櫃台日報', '匯入新客來源', '匯入品項日報', '匯入財務拆帳', '匯入 POS', '刀表同步', '匯入諮詢師舊', '最近的匯入'] },
+      { k: 'todo', t: '✅ 待處理／核對', s: '✅ 待處理', items: ['拆帳待處理', '課程剩餘量差異', '疑似重複', '修正消費紀錄', '補建顧客資料'] },
+      { k: 'set', t: '⚙️ 設定', s: '⚙️ 設定', items: ['人員管理', '診所設定', '公休與國定假日', '部門設定', '療程細項', '療程大類', '關懷提醒設定', '非個人業績名稱', '測試顧客', '手術紀錄顯示設定', 'RFM'] },
+      { k: 'sys', t: '📊 系統狀況', s: '📊 系統', items: ['人員上線狀況', '試算表容量', '年度封存', '操作紀錄'] }
+    ];
+    let adminOpen = (function () {
+      try { const v = JSON.parse(localStorage.getItem('crmAdminOpen') || 'null'); if (v && typeof v === 'object') return v; } catch (e) {}
+      return { imp: true };
+    })();
+    function adminGroup_() {
+      const body = document.getElementById('adminBody');
+      const cards = Array.prototype.slice.call(body.children);
+      const used = [];
+      const title = function (c) { const t = c.querySelector('.section-title'); return t ? t.textContent : ''; };
+      const nav = document.createElement('div');
+      nav.className = 'ag-nav';
+      nav.innerHTML = ADMIN_GROUPS.map(function (g) { return '<button type="button" data-k="' + g.k + '" onclick="agJump_(this.dataset.k)">' + g.s + '</button>'; }).join('');
+      const wraps = {};
+      ADMIN_GROUPS.forEach(function (g) {
+        const w = document.createElement('div');
+        w.className = 'ag' + (adminOpen[g.k] ? '' : ' closed');
+        w.id = 'ag_' + g.k;
+        w.innerHTML = '<button type="button" class="ag-head" onclick="agOpen_(\'' + g.k + '\')"><span>' + g.t + '</span><span class="ag-n"></span></button><div class="ag-body"></div>';
+        const b = w.querySelector('.ag-body');
+        g.items.forEach(function (kw) {
+          for (let i = 0; i < cards.length; i++) {
+            if (used.indexOf(i) === -1 && title(cards[i]).indexOf(kw) !== -1) { used.push(i); b.appendChild(cards[i]); break; }
+          }
+        });
+        wraps[g.k] = w;
+      });
+      cards.forEach(function (c, i) { if (used.indexOf(i) === -1) wraps.set.querySelector('.ag-body').appendChild(c); });   // 沒分到的卡片放「設定」最後
+      body.innerHTML = '';
+      body.appendChild(nav);
+      ADMIN_GROUPS.forEach(function (g) {
+        const w = wraps[g.k];
+        w.querySelector('.ag-n').textContent = w.querySelector('.ag-body').children.length + ' 項　' + (adminOpen[g.k] ? '▾ 收合' : '▸ 展開');
+        body.appendChild(w);
+      });
+      // 電腦版上方標題列是固定的，按鈕列接在它下面
+      const tb = document.querySelector('.app-frame .topbar');
+      const top = tb && getComputedStyle(tb).position === 'sticky' ? tb.offsetHeight : 0;
+      nav.style.top = top + 'px';
+      body.querySelectorAll('.ag').forEach(function (w) { w.style.scrollMarginTop = (top + 64) + 'px'; });
+      agNav_();
+    }
+    function agSave_() { try { localStorage.setItem('crmAdminOpen', JSON.stringify(adminOpen)); } catch (e) {} }
+    function agNav_() {
+      document.querySelectorAll('.ag-nav button').forEach(function (b) { b.classList.toggle('on', !!adminOpen[b.dataset.k]); });
+    }
+    // force：只打開不收合
+    function agOpen_(k, force) {
+      const w = document.getElementById('ag_' + k);
+      if (!w) return;
+      adminOpen[k] = force ? true : !adminOpen[k];
+      w.classList.toggle('closed', !adminOpen[k]);
+      w.querySelector('.ag-n').textContent = w.querySelector('.ag-body').children.length + ' 項　' + (adminOpen[k] ? '▾ 收合' : '▸ 展開');
+      agSave_();
+      agNav_();
+    }
+    function agJump_(k) {
+      agOpen_(k, true);
+      document.getElementById('ag_' + k).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------- 匯入完成：卡片清空、留一行結果，畫面不跳 ----------
+    let impLast = {};
+    // inputId：檔案欄位；previewId：預覽區；summary：一行結果；detail：完整結果（可展開）
+    function importDone_(inputId, previewId, summary, detail) {
+      const now = new Date();
+      const hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      impLast[inputId] = { hm: hm, prev: previewId, summary: summary, detail: String(detail || '').replace(/\s(id|onclick|onchange)="[^"]*"/g, '') };
+      const prev = document.getElementById(previewId);
+      if (prev) prev.innerHTML = '';
+      const inp = document.getElementById(inputId);
+      if (inp) {
+        inp.value = '';
+        const dz = inp.previousElementSibling;
+        if (dz && dz.className === 'dropzone') {
+          dz.dataset.done = '';
+          dz.innerHTML = '📂 可以直接拖<b style="color:var(--text);">下一個檔案</b>到這裡，或點這裡選擇<br><span style="font-size:13px;">Excel 檔（.xlsx、.xls）</span>';
+          dz.style.borderStyle = 'dashed';
+        }
+      }
+      paintImpLast_();
+      loadBatches_(true);
+    }
+    function paintImpLast_() {
+      Object.keys(impLast).forEach(function (id) {
+        const inp = document.getElementById(id);
+        if (!inp) return;
+        let box = document.getElementById(id + 'Last');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = id + 'Last';
+          box.className = 'imp-last';
+          const pv = document.getElementById(impLast[id].prev);   // 放在預覽區上面（整張卡片寬度）
+          if (pv) pv.parentNode.insertBefore(box, pv); else inp.parentNode.insertBefore(box, inp.nextSibling);
+        }
+        const x = impLast[id];
+        box.innerHTML = '<div class="done-bar">✅ 上一次匯入（' + x.hm + '）：' + x.summary +
+          (x.detail ? '　<a href="#" onclick="var d=this.nextElementSibling; d.style.display=d.style.display===\'none\'?\'block\':\'none\'; return false;">看明細</a>' +
+            '<div style="display:none; margin-top:8px; color:var(--text);">' + x.detail + '</div>' : '') + '</div>';
+      });
     }
 
     function resetPwUI(name) {
@@ -2686,7 +2815,7 @@
         (s.deskSplit ? '<div class="row-meta">👥 同一張單由多位銷售人員分業績：<b>' + s.deskSplit + '</b> 張（已合併成一張單，業績依各列金額分給各人）</div>' : '') +
         list('⚠️ 同一張單、同一位銷售人員、同金額出現兩次（疑似重複輸入，只算一次）', s.dupInFile, true) +
         list('ℹ️ 款項名稱不認得', s.unknownPay) +
-        (done && s.suspects ? '<div class="done-bar" style="display:block; margin-top:10px;">⚠️ 匯入後發現 <b>' + s.suspects + '</b> 組疑似重複或單號打錯，請到下方「疑似重複」卡片確認。</div>' : '') +
+        (done && s.suspects ? '<div class="done-bar" style="display:block; margin-top:10px;">⚠️ 匯入後發現 <b>' + s.suspects + '</b> 組疑似重複或單號打錯，請到「✅ 待處理／核對」的「疑似重複」確認。</div>' : '') +
         (done ? '' : '<button type="button" class="primary-btn" id="fdBtn2" style="margin-top:14px; box-shadow:none;" onclick="submitFrontDesk()"><span>確認匯入</span></button>') + '</div>';
     }
 
@@ -2695,7 +2824,15 @@
       const btn = document.getElementById('fdBtn2');
       btn.disabled = true;
       btn.innerHTML = '<span>匯入中，資料多時約需 1～2 分鐘...</span>';
-      api().withSuccessHandler(function (s) { renderFdPreview_(s, true); fdParsed = null; document.getElementById('fdFile').value = ''; perfStale = true; showToast('櫃台日報匯入完成'); })
+      const br = document.getElementById('fdBranch').value;
+      api().withSuccessHandler(function (s) {
+        renderFdPreview_(s, true);
+        const detail = document.getElementById('fdPreview').innerHTML;
+        fdParsed = null; perfStale = true; showToast('櫃台日報匯入完成');
+        importDone_('fdFile', 'fdPreview', '<b>' + esc(br) + '</b>　共 ' + s.rows + ' 列、新增 ' + s.creates +
+          (s.corrections && s.corrections.length ? '　⚠️ 更正人員輸入 ' + s.corrections.length + ' 筆' : '') +
+          (s.suspects ? '　⚠️ 疑似重複 ' + s.suspects + ' 組（到「✅ 待處理」確認）' : ''), detail);
+      })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
         .importFrontDesk(fdReq_(false));
     }
@@ -2834,7 +2971,17 @@
             (dryRun && !results.some(function (r) { return r.s.blocked; })
               ? '<button type="button" class="primary-btn" id="fiBtn2" style="margin-top:14px; box-shadow:none;" onclick="runFinance_(false)"><span>確認匯入這 ' + picked.length + ' 個分頁</span></button>' : '');
           if (btn) { btn.disabled = false; btn.innerHTML = '<span>' + (dryRun ? '預覽勾選的分頁' : '確認匯入') + '</span>'; }
-          if (!dryRun) { perfStale = true; showToast('營業報表匯入完成'); }
+          if (!dryRun) {
+            perfStale = true;
+            const okN = results.filter(function (r) { return !r.s.error && !r.s.blocked; }).length;
+            if (okN) {
+              showToast('營業報表匯入完成');
+              importDone_('fiFile', 'fiPreview', results.map(function (r) {
+                return esc(r.tab) + (r.s.error || r.s.blocked ? ' ⚠️ 失敗' : ' ' + (r.s.lines || 0) + ' 列');
+              }).join('、'), out.innerHTML);
+              fiSheets = [];
+            }
+          }
           return;
         }
         const s = picked[i];
@@ -3195,9 +3342,10 @@
       const box = document.getElementById('knifeSyncResult');
       box.innerHTML = '<div class="sub-panel">✅ 同步完成：' + r.sheets.length + ' 個分頁、<b>' + r.count + '</b> 台' +
         (r.sheets.length ? '<br><span class="row-meta">分頁：' + esc(r.sheets[0]) + (r.sheets.length > 1 ? '～' + esc(r.sheets[r.sheets.length - 1]) : '') + '</span>' : '') +
-        (r.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到人員（可以在下方「👀 手術紀錄顯示設定」直接處理）</div><div class="row-meta">' + r.unresolved.map(esc).join('、') + '</div>' : '') + '</div>';
+        (r.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到人員（可以在「⚙️ 設定」的「👀 手術紀錄顯示設定」直接處理）</div><div class="row-meta">' + r.unresolved.map(esc).join('、') + '</div>' : '') + '</div>';
       loadKnifeVis_();
       kn.data = null; kn.inited = false;
+      loadBatches_(true);
     }
     function runKnifeSync_(full) {
       if (full && !confirm('完整同步會讀刀表的全部月份，可能需要 1～3 分鐘，確定？')) return;
@@ -3333,18 +3481,21 @@
     }
 
     // ---------- 管理員：最近的匯入與復原 ----------
-    let bList = [];
-    function loadBatches_() {
-      const box = document.getElementById('bBox');
-      box.innerHTML = '<div class="empty">讀取中...</div>';
+    let bList = [], bHtml = '';
+    // quiet：背景更新，不顯示「讀取中」
+    function loadBatches_(quiet) {
+      if (!document.getElementById('bBox')) return;
+      if (!quiet) document.getElementById('bBox').innerHTML = '<div class="empty">讀取中...</div>';
       api().withSuccessHandler(function (list) {
         bList = list;
-        box.innerHTML = list.length ? list.map(function (b, i) {
+        const box = document.getElementById('bBox');
+        if (!box) return;
+        bHtml = box.innerHTML = list.length ? list.map(function (b, i) {
           return '<div class="row-item"><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(b.time) + '　' + esc(b.type) + '</span>' +
             (b.undone ? '<span class="pay-tag">已復原（' + esc(b.undoneAt || '') + '）</span>' : '<button class="mini-btn grey" data-i="' + i + '" onclick="undoBatch_(this.dataset.i)">↩️ 復原</button>') + '</div>' +
             '<div class="row-meta">' + esc(b.desc) + '<br>' + esc(b.counts) + (b.by ? '　匯入：' + esc(b.by) : '') + '</div></div>';
         }).join('') : '<div class="empty">最近 7 天沒有匯入紀錄（這個功能更新之後才開始記錄）。</div>';
-      }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).listImportBatches();
+      }).withFailureHandler(function (err) { const box = document.getElementById('bBox'); if (box && !quiet) box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).listImportBatches();
     }
     function undoBatch_(i) {
       const b = bList[Number(i)];
@@ -3588,7 +3739,11 @@
           list('⚠️ 對不上櫃台日報的單（這些品項先不顯示；確認櫃台日報已匯入、手機或姓名一致後再匯入一次）', s.unmatched, true) +
           list('ℹ️ 醫美師對不到人員（不影響品項顯示，補別名後會自動對上）', s.unresolved) +
           (dryRun ? '<button type="button" class="primary-btn" style="margin-top:12px; box-shadow:none;" onclick="runDaily_(false)"><span>確認匯入</span></button>' : '') + '</div>';
-        if (!dryRun) { perfStale = true; diParsed = null; document.getElementById('diFile').value = ''; showToast('品項日報表匯入完成'); }
+        if (!dryRun) {
+          perfStale = true; diParsed = null; showToast('品項日報表匯入完成');
+          importDone_('diFile', 'diPreview', '<b>' + esc(document.getElementById('diBranch').value) + '</b>　' + esc(s.range) + '　' + s.lines + ' 項' +
+            (s.unmatched && s.unmatched.length ? '　⚠️ 對不上 ' + s.unmatched.length + ' 筆' : ''), box.innerHTML);
+        }
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
         .importDailyItems({ branch: document.getElementById('diBranch').value, fileName: diParsed.fileName, rows: diParsed.rows, dryRun: dryRun });
     }
@@ -3696,7 +3851,13 @@
           (s.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到任何人（不影響全店新客數，補別名後個人新客數會自動算進去） <span class="count-pill red">' + s.unresolved.length + '</span></div>' +
             '<div class="row-meta">' + s.unresolved.map(esc).join('、') + '</div>' : '') +
           (dryRun ? '<button type="button" class="primary-btn" id="nsBtn2" style="margin-top:12px; box-shadow:none;" onclick="runNewSrc_(false)"><span>確認匯入</span></button>' : '');
-        if (!dryRun) { perfStale = true; showToast('新客來源明細表匯入完成'); }
+        if (!dryRun) {
+          perfStale = true; showToast('新客來源明細表匯入完成');
+          importDone_('nsFile', 'nsPreview', '<b>' + esc(document.getElementById('nsBranch').value) + '</b>　' + s.months.map(function (m) {
+            return esc(m.month) + ' 有消費新客 ' + (m.deals + (m.auto || 0)) + ' 位';
+          }).join('、') + (s.months.some(function (m) { return m.check && m.check.missing && m.check.missing.length; }) ? '　⚠️ 有待確認' : ''), out.innerHTML);
+          nsMonths = []; delete RANGES.nsRange;
+        }
       }).withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>' + (dryRun ? '預覽' : '確認匯入') + '</span>'; showToast(err.message); })
         .importNewCustSource(nsReq_(picked, dryRun));
     }
@@ -4068,7 +4229,12 @@
       btn.disabled = true;
       btn.innerHTML = '<span>匯入中，資料多時約需 1 分鐘...</span>';
       api()
-        .withSuccessHandler(function (s) { renderLegacyPreview_(s, true); legacyParsed = null; document.getElementById('lgFile').value = ''; showToast('舊 CRM 匯入完成'); perfStale = true; })
+        .withSuccessHandler(function (s) {
+          renderLegacyPreview_(s, true);
+          const who = document.getElementById('lgPerson').value;
+          legacyParsed = null; showToast('舊 CRM 匯入完成'); perfStale = true;
+          importDone_('lgFile', 'lgPreview', '<b>' + esc(who) + '</b>　諮詢紀錄 ' + s.rows + ' 列、新建顧客 ' + s.toCreate + ' 位', document.getElementById('lgPreview').innerHTML);
+        })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
         .importLegacyCrm(legacyReq_(false));
     }
@@ -4101,7 +4267,8 @@
         .withSuccessHandler(function (r) {
           showToast('✅ 已匯入 ' + r.count + ' 筆（' + branch + '・' + cat + '）' + (r.autoCreated ? '，並補建 ' + r.autoCreated + ' 位顧客資料' : ''));
           posParsed = null;
-          loadAdmin();
+          importDone_('posFile', 'posPreview', '<b>' + esc(branch) + '・' + esc(cat) + '</b>　' + r.count + ' 筆' + (r.autoCreated ? '、補建顧客 ' + r.autoCreated + ' 位' : ''), '');
+          loadAdmin(true);   // 更新上方各店的資料日期，畫面停在原位
         })
         .withFailureHandler(function (err) { btn.disabled = false; btn.innerHTML = '<span>確認匯入</span>'; showToast(err.message); })
         .importPosCourses(req);
