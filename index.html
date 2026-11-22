@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.5（業績畫面分區收合）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.6（刀表：加壓物品／檢驗與其他分開）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.5';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.6';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3222,6 +3222,7 @@
           '<div class="row-meta" style="line-height:1.7;">術式：' + esc(x.proc) + (x.anes ? '（' + esc(x.anes) + '）' : '') +
           '<br>執刀：<b>' + esc(x.doctor || '（未填）') + '</b>　服務：<b>' + esc(x.staff || '（未填）') + '</b>' +
           '<br>術後加壓物品：' + (x.suit ? '<b style="color:#3F5A35;">' + esc(x.suit) + '</b>' : '無') +
+          (x.other ? '<br>檢驗／其他：<b style="color:#2F5E8C;">' + esc(x.other) + '</b>' : '') +
           (x.notes ? '<br>注意事項：' + esc(x.notes) : '') +
           (r.manager ? '<br>' + (x.phone ? '電話 ' + esc(x.phone) + '　' : '') + (x.bday ? '生日 ' + esc(x.bday) + '　' : '') + (x.money ? '備註 ' + esc(x.money) : '') +
             (x.team ? '<br><span style="font-size:12px;">' + esc(x.team) + '</span>' : '') : '') + '</div></div>';
@@ -3231,8 +3232,8 @@
     function exportKnife_() {
       const r = kn.data;
       loadSheetJs_(function () {
-        const rows = [['日期', '時間', '診所', '客人', '生日', '電話', '術式', '麻醉', '執刀醫師', '服務人員', '術後加壓物品', '注意事項', '備註（金額）', '團隊']].concat(r.list.map(function (x) {
-          return [x.date, x.time, x.clinic, x.name, x.bday || '', x.phone || '', x.proc, x.anes, x.doctor, x.staff, x.suit, x.notes, x.money || '', x.team || ''];
+        const rows = [['日期', '時間', '診所', '客人', '生日', '電話', '術式', '麻醉', '執刀醫師', '服務人員', '術後加壓物品', '檢驗／其他', '注意事項', '備註（金額）', '團隊']].concat(r.list.map(function (x) {
+          return [x.date, x.time, x.clinic, x.name, x.bday || '', x.phone || '', x.proc, x.anes, x.doctor, x.staff, x.suit, x.other || '', x.notes, x.money || '', x.team || ''];
         }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '手術紀錄');
@@ -3279,6 +3280,10 @@
         '<div class="hint" style="margin-top:0;">沒勾的人，手術照樣會列出，只是不出現在「全部人員」選單和台數統計。括號是台數、最後一次手術。</div>' +
         '<div class="jump-links"><button class="mini-btn grey" onclick="kvStaff_(\'all\')">全選</button><button class="mini-btn grey" onclick="kvStaff_(\'active\')">只選在職人員</button><button class="mini-btn grey" onclick="kvStaff_(\'none\')">清除</button></div>' +
         '<div class="sub-panel" style="margin:6px 0;" id="kvStaffBox">' + kvStaffHtml_() + '</div>' +
+        '<div class="group-title">🩹 術後加壓物品關鍵字</div>' +
+        '<div class="hint" style="margin-top:0;">刀表「備註」下面那一行，含有這些字的算<b style="color:#3F5A35;">術後加壓物品</b>，其他（例如內視鏡、已做EKG/X-ray、藥品）放到<b style="color:#2F5E8C;">檢驗／其他</b>。' +
+          '一行一個，或用頓號分開；寫一部分就好（例如「頭套」也會對到「簡易頭套」）。存檔後所有手術紀錄（包含舊月份）馬上重新分類。</div>' +
+        '<textarea id="kvSuitKw" rows="3" style="margin-top:6px;">' + esc((k.suitKw || []).join('、')) + '</textarea>' +
         '<button type="button" class="primary-btn" style="margin:8px 0 4px; box-shadow:none;" onclick="saveKnifeVis_()"><span>儲存顯示設定</span></button>';
     }
     function loadKnifeVis_() {
@@ -3335,8 +3340,11 @@
     function saveKnifeVis_() {
       const months = Object.keys(kv.months).filter(function (m) { return kv.months[m]; });
       const staff = Object.keys(kv.staff).filter(function (n) { return kv.staff[n]; });
-      api().withSuccessHandler(function () { showToast('✅ 已儲存：開放 ' + months.length + ' 個月份、顯示 ' + staff.length + ' 位人員'); kn.data = null; kn.inited = false; })
-        .withFailureHandler(function (err) { showToast(err.message); }).saveKnifeVisibility({ months: months, staff: staff });
+      const kwEl = document.getElementById('kvSuitKw');
+      const suitKw = kwEl ? kwEl.value.split(/[、,，\n]/).map(function (x) { return x.trim(); }).filter(Boolean) : null;
+      if (suitKw && !suitKw.length) { showToast('術後加壓物品關鍵字至少要有一個'); return; }
+      api().withSuccessHandler(function () { showToast('✅ 已儲存：開放 ' + months.length + ' 個月份、顯示 ' + staff.length + ' 位人員' + (suitKw ? '、加壓物品關鍵字 ' + suitKw.length + ' 個' : '')); kn.data = null; kn.inited = false; })
+        .withFailureHandler(function (err) { showToast(err.message); }).saveKnifeVisibility({ months: months, staff: staff, suitKw: suitKw });
     }
     function showKnifeResult_(r) {
       const box = document.getElementById('knifeSyncResult');
