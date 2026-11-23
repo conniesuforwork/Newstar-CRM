@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.9（手術紀錄：重修標示）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.0（刀表自動同步時段）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.9';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v52.0';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3266,12 +3266,28 @@
           '<div class="jump-links"><button class="mini-btn" onclick="runKnifeSync_(false)">🔄 立即同步（最近 3 個月）</button>' +
           '<button class="mini-btn grey" onclick="runKnifeSync_(true)">完整同步（全部月份）</button></div>' +
           '<div id="knifeSyncResult"></div>' +
+          '<label>⏰ 自動同步時段（每天，讀最近幾個月）</label>' +
+          '<div class="hint" style="margin-top:0;">' + ((k.hours || []).length ? '目前：每天 ' + k.hours.map(function (h) { return h + ':00'; }).join('、') + '。' : '目前：<b>不自動同步</b>。') +
+            'Google 的排程沒辦法準時到整點，會在那一個小時內執行（例如 7:00 的會在 7:00～8:00 之間），刀表臨時大改可以按「立即同步」。</div>' +
+          '<div class="sub-panel" style="margin:6px 0;" id="knifeHours">' + Array.apply(null, Array(24)).map(function (_, h) {
+            return '<label style="display:inline-flex; align-items:center; gap:4px; margin:0 10px 6px 0; font-weight:normal; min-width:58px;"><input type="checkbox" style="width:16px; height:16px;" value="' + h + '"' +
+              ((k.hours || []).indexOf(h) !== -1 ? ' checked' : '') + '>' + (h < 10 ? '0' : '') + h + ':00</label>';
+          }).join('') + '</div>' +
+          '<button type="button" class="mini-btn" onclick="saveKnifeSchedule_()">儲存自動同步時段</button>' +
           '<label>換一份刀表（貼上試算表網址）</label><div class="row-2"><input type="text" id="knifeUrl" placeholder="https://docs.google.com/spreadsheets/d/…">' +
           '<button type="button" class="mini-btn grey" onclick="setKnifeUrl_()">儲存</button></div>' +
           '<label>補資料：匯入刀表的 Excel 檔（例如已經被關掉的舊月份）</label><input type="file" id="knifeFile" accept=".xlsx,.xls" onchange="readKnifeFile_(this)">';
         enhanceFileInputs_(box);
         if (after) after();
       }).withFailureHandler(function (err) { box.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; }).getKnifeInfo();
+    }
+    function saveKnifeSchedule_() {
+      const hours = Array.prototype.slice.call(document.querySelectorAll('#knifeHours input:checked')).map(function (x) { return Number(x.value); });
+      if (!hours.length && !confirm('沒有勾任何時段，刀表就不會自動同步（只能手動按「立即同步」）。確定嗎？')) return;
+      api().withSuccessHandler(function () {
+        showToast('✅ 已儲存：' + (hours.length ? '每天 ' + hours.map(function (h) { return h + ':00'; }).join('、') + ' 自動同步' : '不自動同步'));
+        loadKnifeAdmin_();
+      }).withFailureHandler(function (err) { showToast(err.message); }).saveKnifeSchedule({ hours: hours });
     }
     // 人員可看的月份、顯示的人員
     let kv = { months: {}, staff: {} };
