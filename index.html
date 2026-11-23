@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.6（刀表：加壓物品／檢驗與其他分開）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v51.8（手術紀錄：檢驗關鍵字、略過灰色取消格）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v51.6';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v51.8';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3188,14 +3188,26 @@
         .getSurgeries({ month: kn.month, q: kn.q, suit: kn.suit, staff: kn.staff, clinic: kn.clinic, doctor: kn.doctor });
     }
     function knSet_(k, v) { kn[k] = v; loadKnife_(); }
+    // ◀ ▶：照選單順序換上一位／下一位（從「全部」開始按 ▶ 是第一位）
+    function knStep_(k, d) {
+      const list = ((kn.data && kn.data.opts && kn.data.opts[k]) || []).map(function (x) { return x.name; });
+      if (!list.length) return;
+      const i = list.indexOf(kn[k]);
+      const j = i === -1 ? (d > 0 ? 0 : list.length - 1) : (i + d + list.length) % list.length;
+      knSet_(k, list[j]);
+    }
     function renderKnife_() {
       const r = kn.data, card = document.getElementById('knifeCard');
       if (r.noMonths) { card.innerHTML = '<div class="section-title">🔪　' + (r.manager ? '手術紀錄' : '我的手術紀錄') + '</div><div class="empty">管理員還沒開放手術紀錄的月份。</div>'; return; }
       const ym = function (m) { return m ? m.slice(0, 4) + ' 年 ' + Number(m.slice(5, 7)) + ' 月' : '全部月份'; };
       const wd = function (d) { return ['日', '一', '二', '三', '四', '五', '六'][new Date(d.replace(/-/g, '/')).getDay()]; };
-      const sel = function (k, list, all) {
-        return '<select onchange="knSet_(\'' + k + '\', this.value)" style="width:auto;"><option value="">' + all + '</option>' +
-          list.map(function (v) { return '<option' + (v === kn[k] ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
+      // list：[{ name, n }]（n＝台數）；step：加上 ◀ ▶ 換上一位／下一位
+      const sel = function (k, list, all, step) {
+        const s = '<select onchange="knSet_(\'' + k + '\', this.value)" style="width:auto;"><option value="">' + all + '</option>' +
+          list.map(function (v) { return '<option value="' + esc(v.name) + '"' + (v.name === kn[k] ? ' selected' : '') + '>' + esc(v.name) + '（' + v.n + '）</option>'; }).join('') + '</select>';
+        if (!step || list.length < 2) return s;
+        const b = function (d, t) { return '<button type="button" class="mini-btn grey" style="padding:8px 10px;" title="' + t + '" onclick="knStep_(\'' + k + '\',' + d + ')">' + (d < 0 ? '◀' : '▶') + '</button>'; };
+        return '<span style="display:inline-flex; gap:4px; align-items:center;">' + b(-1, '上一位') + s + b(1, '下一位') + '</span>';
       };
       let h = '<div class="section-title" style="justify-content:space-between;">🔪　' + (r.manager ? '手術紀錄' : '我的手術紀錄') +
         '<span class="row-meta" style="font-weight:normal;">' + (r.last ? '刀表同步 ' + esc(r.last.at) : '還沒同步過') + '</span></div>' +
@@ -3204,7 +3216,7 @@
           r.months.map(function (m) { return '<option value="' + m + '"' + (m === kn.month ? ' selected' : '') + '>' + ym(m) + '</option>'; }).join('') + '</select>' +
         '<select onchange="knSet_(\'suit\', this.value)" style="width:auto;"><option value="">術後加壓物品：全部</option>' +
           '<option value="yes"' + (kn.suit === 'yes' ? ' selected' : '') + '>有術後加壓物品</option><option value="no"' + (kn.suit === 'no' ? ' selected' : '') + '>沒有</option></select>' +
-        (r.manager ? (r.clinics.length > 1 ? sel('clinic', r.clinics, '全部診所') : '') + sel('staff', r.byStaff.map(function (x) { return x.name; }).filter(function (x) { return x !== '（未填）'; }).sort(), '全部人員') + sel('doctor', r.doctors.filter(function (x) { return x !== '（未填）'; }), '全部醫師') : '') +
+        (r.manager ? (r.clinics.length > 1 ? sel('clinic', r.opts.clinic, '全部診所') : '') + sel('staff', r.opts.staff, '全部人員', true) + sel('doctor', r.opts.doctor, '全部醫師', true) : '') +
         '</div>' +
         '<input type="text" placeholder="搜尋客人姓名' + (r.manager ? '或電話' : '') + '" value="' + esc(kn.q) + '" style="margin-top:8px;" onkeydown="if(event.key===\'Enter\') knSet_(\'q\', this.value.trim())" onblur="if(this.value.trim()!==kn.q) knSet_(\'q\', this.value.trim())">' +
         '<div class="sub-panel" style="margin:10px 0;">' + ym(kn.month) + '共 <b>' + r.total + '</b> 台、有術後加壓物品 <b>' + r.withSuit + '</b> 台' +
@@ -3284,6 +3296,9 @@
         '<div class="hint" style="margin-top:0;">刀表「備註」下面那一行，含有這些字的算<b style="color:#3F5A35;">術後加壓物品</b>，其他（例如內視鏡、已做EKG/X-ray、藥品）放到<b style="color:#2F5E8C;">檢驗／其他</b>。' +
           '一行一個，或用頓號分開；寫一部分就好（例如「頭套」也會對到「簡易頭套」）。存檔後所有手術紀錄（包含舊月份）馬上重新分類。</div>' +
         '<textarea id="kvSuitKw" rows="3" style="margin-top:6px;">' + esc((k.suitKw || []).join('、')) + '</textarea>' +
+        '<div class="group-title">🧪 檢驗關鍵字</div>' +
+        '<div class="hint" style="margin-top:0;">「注意事項」用「；」分段，含有這些字的那一段會搬到<b style="color:#2F5E8C;">檢驗／其他</b>（例如「吉林X光、心電圖」）。英文不分大小寫，存檔後馬上重新分類。</div>' +
+        '<textarea id="kvTestKw" rows="3" style="margin-top:6px;">' + esc((k.testKw || []).join('、')) + '</textarea>' +
         '<button type="button" class="primary-btn" style="margin:8px 0 4px; box-shadow:none;" onclick="saveKnifeVis_()"><span>儲存顯示設定</span></button>';
     }
     function loadKnifeVis_() {
@@ -3343,12 +3358,15 @@
       const kwEl = document.getElementById('kvSuitKw');
       const suitKw = kwEl ? kwEl.value.split(/[、,，\n]/).map(function (x) { return x.trim(); }).filter(Boolean) : null;
       if (suitKw && !suitKw.length) { showToast('術後加壓物品關鍵字至少要有一個'); return; }
+      const tEl = document.getElementById('kvTestKw');
+      const testKw = tEl ? tEl.value.split(/[、,，\n]/).map(function (x) { return x.trim(); }).filter(Boolean) : null;
       api().withSuccessHandler(function () { showToast('✅ 已儲存：開放 ' + months.length + ' 個月份、顯示 ' + staff.length + ' 位人員' + (suitKw ? '、加壓物品關鍵字 ' + suitKw.length + ' 個' : '')); kn.data = null; kn.inited = false; })
-        .withFailureHandler(function (err) { showToast(err.message); }).saveKnifeVisibility({ months: months, staff: staff, suitKw: suitKw });
+        .withFailureHandler(function (err) { showToast(err.message); }).saveKnifeVisibility({ months: months, staff: staff, suitKw: suitKw, testKw: testKw });
     }
     function showKnifeResult_(r) {
       const box = document.getElementById('knifeSyncResult');
       box.innerHTML = '<div class="sub-panel">✅ 同步完成：' + r.sheets.length + ' 個分頁、<b>' + r.count + '</b> 台' +
+        (r.cancelled ? '<br><span class="row-meta">略過灰色（取消／改期）' + r.cancelled + ' 台</span>' : '') +
         (r.sheets.length ? '<br><span class="row-meta">分頁：' + esc(r.sheets[0]) + (r.sheets.length > 1 ? '～' + esc(r.sheets[r.sheets.length - 1]) : '') + '</span>' : '') +
         (r.unresolved.length ? '<div class="group-title">⚠️ 服務人員對不到人員（可以在「⚙️ 設定」的「👀 手術紀錄顯示設定」直接處理）</div><div class="row-meta">' + r.unresolved.map(esc).join('、') + '</div>' : '') + '</div>';
       loadKnifeVis_();
@@ -3375,7 +3393,15 @@
         const reader = new FileReader();
         reader.onload = function (e) {
           try {
-            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellStyles: true });
+            // 灰色底（取消／改期）：灰階、比白色深
+            const gray = function (c) {
+              const rgb = c.s && c.s.fgColor && c.s.fgColor.rgb;
+              const m = String(rgb || '').match(/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+              if (!m || (c.s.patternType && c.s.patternType === 'none')) return false;
+              const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+              return Math.max(r, g, b) - Math.min(r, g, b) <= 12 && Math.max(r, g, b) <= 0xE0;
+            };
             const sheets = {};
             wb.SheetNames.forEach(function (n) {
               if (!/^\d{5}$/.test(n)) return;
@@ -3383,7 +3409,10 @@
               Object.keys(ws).forEach(function (a) {
                 if (a.charAt(0) === '!') return;
                 const rc = XLSX.utils.decode_cell(a), v = ws[a].w != null ? ws[a].w : ws[a].v;
-                if (rc.c < 26 && v != null && String(v).trim()) cells.push([rc.r + 1, rc.c + 1, String(v)]);
+                if (!(rc.c < 26 && v != null && String(v).trim())) return;
+                const cell = [rc.r + 1, rc.c + 1, String(v)];
+                if (String(v).indexOf('手術時間') !== -1 && gray(ws[a])) cell.push(1);
+                cells.push(cell);
               });
               sheets[n] = cells;
             });
