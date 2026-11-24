@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.1（剩餘工作天改用開門天數）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.2（集團剩餘工作天也用開門天數）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v52.1';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v52.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -4533,7 +4533,7 @@
         '<div class="big">' + money(s.s) + '</div>' +
         (t.total ? '<div class="progress"><div style="width:' + Math.min(pctOf_(s.s, t.total), 100) + '%"></div></div>' +
           '<div class="hint">' + esc(d.scopeLabel) + '目標' + (d.dept ? '（個人目標加總）' : '') + ' <b>' + money(t.total) + '</b>，已達成 ' + pctText_(s.s, t.total) +
-          (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + (d.scope ? ' 個工作天' : ' 天') : '') : '') + '</div>'
+          (s.s < t.total ? '，還差 <b>' + money(t.total - s.s) + '</b>' + (d.isCurrent ? '，剩 ' + d.daysLeft + ' 個工作天' : '') : '') + '</div>'
           : '<div class="hint">尚未設定本月目標</div>') +
         (d.noTargetCount ? '<div class="hint" style="color:#9B3F2D;">⚠️ ' + d.noTargetCount + ' 位人員還沒設個人目標，達成率可能偏高</div>' : '') +
         '<div class="hint">' + (d.isCurrent ? '今日 <b>' + money(d.today) + '</b>　' : '') + '上月全月 ' + money(d.prevSales) + growth +
