@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.2（集團剩餘工作天也用開門天數）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.3（手術紀錄：局麻、麻醫標示）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v52.2';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v52.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -3176,7 +3176,7 @@
     }
 
     // ---------- 🔪 手術紀錄 ----------
-    const kn = { month: '', q: '', suit: '', redo: '', staff: '', clinic: '', doctor: '', data: null, inited: false };
+    const kn = { month: '', q: '', suit: '', redo: '', anes: '', staff: '', clinic: '', doctor: '', data: null, inited: false };
     function loadKnife_() {
       const card = document.getElementById('knifeCard');
       if (kn.data) card.style.opacity = '0.6';
@@ -3185,9 +3185,10 @@
         if (!kn.inited) { kn.inited = true; if (r.months.length && !kn.month) { kn.month = r.months[0]; return loadKnife_(); } }
         kn.data = r; renderKnife_();
       }).withFailureHandler(function (err) { card.style.opacity = ''; card.innerHTML = '<div class="empty">' + esc(err.message) + '</div>'; })
-        .getSurgeries({ month: kn.month, q: kn.q, suit: kn.suit, redo: kn.redo, staff: kn.staff, clinic: kn.clinic, doctor: kn.doctor });
+        .getSurgeries({ month: kn.month, q: kn.q, suit: kn.suit, redo: kn.redo, anes: kn.anes, staff: kn.staff, clinic: kn.clinic, doctor: kn.doctor });
     }
     function knSet_(k, v) { kn[k] = v; loadKnife_(); }
+    function knTag_(t, bg) { return '<span style="margin-left:6px; font-size:12.5px; background:' + bg + '; color:#fff; border-radius:999px; padding:2px 8px; vertical-align:2px;">' + t + '</span>'; }
     // ◀ ▶：照選單順序換上一位／下一位（從「全部」開始按 ▶ 是第一位）
     function knStep_(k, d) {
       const list = ((kn.data && kn.data.opts && kn.data.opts[k]) || []).map(function (x) { return x.name; });
@@ -3218,10 +3219,13 @@
           '<option value="yes"' + (kn.suit === 'yes' ? ' selected' : '') + '>有術後加壓物品</option><option value="no"' + (kn.suit === 'no' ? ' selected' : '') + '>沒有</option></select>' +
         '<select onchange="knSet_(\'redo\', this.value)" style="width:auto;"><option value="">重修：全部</option>' +
           '<option value="yes"' + (kn.redo === 'yes' ? ' selected' : '') + '>只看重修</option><option value="no"' + (kn.redo === 'no' ? ' selected' : '') + '>不含重修</option></select>' +
+        '<select onchange="knSet_(\'anes\', this.value)" style="width:auto;">' + [['', '麻醉：全部'], ['local', '只看局麻'], ['mayi', '只看麻醫'], ['sleep', '睡麻']].map(function (o) {
+          return '<option value="' + o[0] + '"' + (kn.anes === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') + '</select>' +
         (r.manager ? (r.clinics.length > 1 ? sel('clinic', r.opts.clinic, '全部診所') : '') + sel('staff', r.opts.staff, '全部人員', true) + sel('doctor', r.opts.doctor, '全部醫師', true) : '') +
         '</div>' +
         '<input type="text" placeholder="搜尋客人姓名' + (r.manager ? '或電話' : '') + '" value="' + esc(kn.q) + '" style="margin-top:8px;" onkeydown="if(event.key===\'Enter\') knSet_(\'q\', this.value.trim())" onblur="if(this.value.trim()!==kn.q) knSet_(\'q\', this.value.trim())">' +
-        '<div class="sub-panel" style="margin:10px 0;">' + ym(kn.month) + '共 <b>' + r.total + '</b> 台、有術後加壓物品 <b>' + r.withSuit + '</b> 台、重修 <b>' + (r.redo || 0) + '</b> 台' +
+        '<div class="sub-panel" style="margin:10px 0;">' + ym(kn.month) + '共 <b>' + r.total + '</b> 台、有術後加壓物品 <b>' + r.withSuit + '</b> 台、重修 <b>' + (r.redo || 0) + '</b> 台、局麻 <b>' + (r.local || 0) + '</b> 台、麻醫 <b>' + (r.mayi || 0) + '</b> 台' +
           (r.total > r.list.length ? '<br><span class="row-meta">只顯示最新 ' + r.list.length + ' 台，請用月份或搜尋縮小範圍</span>' : '') + '</div>';
       if (r.manager && (r.byStaff.length || r.byDoctor.length)) {
         const chips = function (a) { return a.map(function (x) { return '<span class="mini-btn grey" style="cursor:default;">' + esc(x.name) + ' ' + x.n + '</span>'; }).join(''); };
@@ -3232,7 +3236,7 @@
       }
       h += r.list.length ? r.list.map(function (x) {
         return '<div class="row-item"' + (x.redo ? ' style="background:#FCE9D6; border-radius:10px; padding:10px 12px; margin:4px 0;"' : '') + '><div class="row-top"><span class="row-name" style="font-size:15px;">' + esc(x.date.slice(5).replace('-', '/')) + '（' + wd(x.date) + '）' + esc(x.time) + '　' + esc(x.name) +
-          (x.redo ? '<span style="margin-left:8px; font-size:12.5px; background:#E8833A; color:#fff; border-radius:999px; padding:2px 8px; vertical-align:2px;">🔁 重修</span>' : '') + '</span>' +
+          (x.redo ? knTag_('🔁 重修', '#E8833A') : '') + (x.local ? knTag_('💉 ' + (x.noAnes ? '不麻' : '局麻'), '#4F8FC0') : '') + (x.mayi ? knTag_('🩺 麻醫', '#6A1FB0') : '') + '</span>' +
           '<span class="row-meta">' + esc(x.clinic.replace('診所', '')) + '</span></div>' +
           '<div class="row-meta" style="line-height:1.7;">術式：' + esc(x.proc) + (x.anes ? '（' + esc(x.anes) + '）' : '') +
           '<br>執刀：<b>' + esc(x.doctor || '（未填）') + '</b>　服務：<b>' + esc(x.staff || '（未填）') + '</b>' +
@@ -3247,8 +3251,8 @@
     function exportKnife_() {
       const r = kn.data;
       loadSheetJs_(function () {
-        const rows = [['日期', '時間', '診所', '客人', '生日', '電話', '術式', '麻醉', '執刀醫師', '服務人員', '術後加壓物品', '檢驗／其他', '注意事項', '備註（金額）', '團隊', '重修']].concat(r.list.map(function (x) {
-          return [x.date, x.time, x.clinic, x.name, x.bday || '', x.phone || '', x.proc, x.anes, x.doctor, x.staff, x.suit, x.other || '', x.notes, x.money || '', x.team || '', x.redo ? '是' : ''];
+        const rows = [['日期', '時間', '診所', '客人', '生日', '電話', '術式', '麻醉', '執刀醫師', '服務人員', '術後加壓物品', '檢驗／其他', '注意事項', '備註（金額）', '團隊', '重修', '局麻／不麻', '麻醫']].concat(r.list.map(function (x) {
+          return [x.date, x.time, x.clinic, x.name, x.bday || '', x.phone || '', x.proc, x.anes, x.doctor, x.staff, x.suit, x.other || '', x.notes, x.money || '', x.team || '', x.redo ? '是' : '', x.local ? (x.noAnes ? '不麻' : '局麻') : '', x.mayi ? '是' : ''];
         }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '手術紀錄');
