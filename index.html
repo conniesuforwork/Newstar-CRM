@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.3（手術紀錄：局麻、麻醫標示）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.4（療程人次：同單同大類只算一次、疑似重複人次確認）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v52.3';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v52.4';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -4680,7 +4680,7 @@
 
       // 部門主管只看業績和達成：不顯示課程統計、承接、待承接、目標設定
       if (!d.deptHead) {
-        html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div>';
+        html += '<div id="courseSumCard"></div><div id="takeoverCard"></div><div id="unassignedCard"></div><div id="splitPayCard"></div>';
         html += '<div class="card visible" id="clinicTargetCard"><div class="section-title">🏥　診所業績目標</div><div class="empty">載入中...</div></div>';
         html += targetCardHtml();
       }
@@ -4693,6 +4693,43 @@
       loadTargets();
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
+      loadSplitPay_(d.monthKey, d.scope || '');
+    }
+
+    // ---------- 🧮 疑似重複人次（同客人、同月、同大類有 2 筆以上訂金／全額） ----------
+    let spArgs = { month: '', branch: '' };
+    function loadSplitPay_(month, branch) {
+      spArgs = { month: month, branch: branch };
+      api().withSuccessHandler(renderSplitPay_).withFailureHandler(function (err) {
+        const box = document.getElementById('splitPayCard');
+        if (box) box.innerHTML = '<div class="card visible"><div class="section-title">🧮　疑似重複人次</div><div class="empty">' + esc(err.message) + '</div></div>';
+      }).getSplitPaySuspects(spArgs);
+    }
+    function renderSplitPay_(r) {
+      const box = document.getElementById('splitPayCard');
+      if (!box) return;
+      const lab = { split: '分次付款（不算人次）', second: '第二筆購買（算人次）' };
+      box.innerHTML = '<div class="card visible"><div class="section-title">🧮　疑似重複人次' +
+        '<span class="count-pill' + (r.pending ? ' red' : '') + '">待確認 ' + r.pending + '</span></div>' +
+        '<div class="hint" style="margin-top:0;">同一位客人、同一個月、同一個療程大類，有 2 筆以上「訂金／全額」。訂金、全額算一筆新的購買；如果其實是同一筆分次付款（櫃台把次訂金打成訂金），請按「分次付款」，那一筆就不算人次（業績照算）。還沒確認前先照 2 人次算。</div>' +
+        (r.list.length ? r.list.map(function (g) {
+          return '<div class="row-item"><div class="row-top"><span class="row-name">' + esc(g.name) + '　<span style="font-weight:normal;">' + esc(g.cat) + '</span></span>' +
+            '<span class="row-meta">' + esc(g.branch) + '　目前算 <b>' + g.count + '</b> 人次</span></div>' +
+            g.rows.map(function (x) {
+              return '<div class="row-meta" style="margin-top:6px; padding:6px 8px; border-radius:8px; background:' + (x.first ? '#F4F1EC' : x.mark === 'split' ? '#E8F0F8' : x.mark === 'second' ? '#EEF5E9' : '#FCE9D6') + ';">' +
+                esc(x.date) + '　<b>' + esc(x.payType) + '</b>　' + money(x.amount) + '　' + esc(x.items || '') + '　' + esc(x.staff) + (x.receipt ? '　單號 ' + esc(x.receipt) : '') +
+                (x.first ? '　<span style="color:var(--text-muted);">（第一筆購買）</span>' :
+                  '<div style="margin-top:6px;">' + (x.mark ? '✅ ' + lab[x.mark] + '　<button class="mini-btn grey" data-k="' + esc(x.key) + '" onclick="markSplit_(this, \'\')">改回未確認</button>' :
+                    '<button class="mini-btn" data-k="' + esc(x.key) + '" onclick="markSplit_(this, \'second\')">是第二筆購買</button> ' +
+                    '<button class="mini-btn grey" data-k="' + esc(x.key) + '" onclick="markSplit_(this, \'split\')">是分次付款</button>') + '</div>') + '</div>';
+            }).join('') + '</div>';
+        }).join('') : '<div class="empty">這個月沒有疑似重複人次。</div>') + '</div>';
+    }
+    function markSplit_(btn, mark) {
+      btn.disabled = true;
+      api().withSuccessHandler(function (r) { renderSplitPay_(r); perfStale = true; showToast(mark === 'split' ? '✅ 已改成分次付款，這筆不算人次' : mark === 'second' ? '✅ 已確認是第二筆購買' : '已改回未確認'); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .saveSplitPayMark({ key: btn.dataset.k, mark: mark, month: spArgs.month, branch: spArgs.branch });
     }
 
     function renderPerf(d) {
@@ -4875,7 +4912,7 @@
         { k: 'today', t: '📅 今日與進度', s: '📅 今日', items: ['#dailyCard', '本月進度', '#clinicTargetCard'] },
         { k: 'people', t: '👥 人員', s: '👥 人員', items: ['諮詢師業績', '#targetCard'] },
         { k: 'ana', t: '💰 業績分析', s: '💰 分析', items: ['各診所', '療程類別業績', '品項銷售', '付款結構', 'Google 評論進度', '行銷新客分析'] },
-        { k: 'todo', t: '🧩 待處理', s: '🧩 待處理', items: ['對帳', '業績異動', '#unassignedCard', '#takeoverCard', '#courseSumCard'] },
+        { k: 'todo', t: '🧩 待處理', s: '🧩 待處理', items: ['對帳', '業績異動', '#unassignedCard', '#takeoverCard', '#splitPayCard', '#courseSumCard'] },
         { k: 'rep', t: '📄 月報', s: '📄 月報', items: ['（Excel）'] }
       ]
     };
@@ -4934,7 +4971,7 @@
       const pill = function (root, word) {
         let n = 0;
         root.querySelectorAll('.group-title, .section-title').forEach(function (t) {
-          if (t.textContent.indexOf(word) !== -1) { const p = t.querySelector('.count-pill'); if (p) n += parseInt(p.textContent, 10) || 0; }
+          if (t.textContent.indexOf(word) !== -1) { const p = t.querySelector('.count-pill'); if (p) n += parseInt(p.textContent.replace(/[^\d]/g, ''), 10) || 0; }
         });
         return n;
       };
@@ -4948,6 +4985,8 @@
           const ua = pill(b, '待承接'), tk = pill(b, '承接申請');
           if (ua) out.push('待承接 ' + ua);
           if (tk) out.push('承接申請 ' + tk);
+          const sp = pill(b, '疑似重複人次');
+          if (sp) out.push('人次待確認 ' + sp);
         }
         w.querySelector('.pg-badge').textContent = out.join('　');
       });
