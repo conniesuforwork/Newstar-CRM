@@ -550,8 +550,8 @@
           <div class="section-title" style="margin-bottom:6px;">⭐　這位顧客留了 Google 評論</div>
           <div class="row-2">
             <div>
-              <label style="margin-top:0;">Google 上的顯示名稱</label>
-              <input type="text" id="erGoogleName" placeholder="方便主管核對">
+              <label style="margin-top:0;">Google 上的顯示名稱 <span style="color:#C0392B;">＊</span></label>
+              <input type="text" id="erGoogleName" placeholder="必填，用來確認不是同一則評論">
             </div>
             <div>
               <label style="margin-top:0;">評論日期</label>
@@ -856,7 +856,7 @@
       <button class="link-btn" onclick="showPw_(false)">修改密碼</button>　
       <button class="link-btn" onclick="doLogout_('已登出')">登出</button>
     </div>
-    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.4（療程人次：同單同大類只算一次、疑似重複人次確認）</div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:14px 0 4px;">程式版本 v52.6（Google 評論卡控、評論日期限制）</div>
   </div>
 
   <script>
@@ -876,7 +876,7 @@
     const CRM_API_URL = 'https://script.google.com/macros/s/AKfycbyoYGsAUi7eAZZtO3a2qbdqGhLcbMO1Gz0y3GHupxGqj8scsFvDNQ1PF2Hj-rPEuXcg_A/exec';
 
     // 統一呼叫伺服器：在 Apps Script 裡用 google.script.run，在 GitHub 用網路請求（失敗自動重試 2 次）
-    const FRONT_VERSION = 'v52.4';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
+    const FRONT_VERSION = 'v52.6';     // 要跟後端 網頁入口.gs 的 CRM_VERSION 一樣
 
     function serverRun_(fn, args, ok, fail) {
       if (window.google && google.script && google.script.run) {
@@ -1975,6 +1975,7 @@
           body.style.opacity = '1'; adminData = d; renderAdmin();
           if (keepScroll) window.scrollTo(0, y);
           loadBatches_(true);
+          loadRevLinks_();
         })
         .withFailureHandler(function (err) { body.style.opacity = '1'; body.innerHTML = '<div class="card visible"><div class="empty">' + esc(err.message) + '</div></div>'; })
         .getAdminData();
@@ -2263,6 +2264,9 @@
         }).join('') : '<div class="empty">還沒有操作紀錄。</div>') +
         '<div class="hint">完整紀錄在試算表的「操作紀錄」分頁，會永久保留。</div></div>';
 
+      html += '<div class="card visible"><div class="section-title">📎　舊評論對應顧客</div>' +
+        '<div class="hint" style="margin-top:0;">以前登記的 Google 評論只有姓名。系統先用手機對，沒有手機的看姓名在顧客資料裡是不是只有一位，是就自動對上；同名有好幾位的請選是哪一位。對上後就算進「2 年內最多 2 次」。</div>' +
+        '<div id="revLinkBox"><div class="empty">讀取中...</div></div></div>';
       document.getElementById('adminBody').innerHTML = html;
       enhanceFileInputs_(document.getElementById('adminBody'));
       adminGroup_();
@@ -2285,10 +2289,41 @@
       }
     }
 
+    // ---------- 📎 舊評論對應顧客 ----------
+    let rlData = null;
+    function loadRevLinks_() {
+      if (!document.getElementById('revLinkBox')) return;
+      api().withSuccessHandler(renderRevLinks_).withFailureHandler(function (err) {
+        const b = document.getElementById('revLinkBox'); if (b) b.innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+      }).syncReviewLinks();
+    }
+    function renderRevLinks_(r) {
+      rlData = r;
+      const box = document.getElementById('revLinkBox');
+      if (!box) return;
+      box.innerHTML = '<div class="sub-panel" style="margin:6px 0;">✅ 已對上 <b>' + r.linked + '</b> 筆' + (r.auto ? '（這次自動對上 ' + r.auto + ' 筆）' : '') +
+          '　❓ 待選 <b>' + r.pending.length + '</b> 筆　⛔ 找不到顧客 <b>' + r.none + '</b> 筆（不計次數）</div>' +
+        r.pending.map(function (x, i) {
+          return '<div class="row-item"><div class="row-name">' + esc(x.customer) + '　<span class="row-meta">' + esc(x.date) + '　' + esc(x.staff) + '　Google：' + esc(x.google) + '</span></div>' +
+            '<select id="rlSel' + i + '" style="margin-top:6px;">' + x.cands.map(function (c) { return '<option value="' + esc(c.key) + '">' + esc(c.label) + '</option>'; }).join('') + '</select>' +
+            '<button class="mini-btn" style="margin-top:6px;" onclick="rlSave_(' + i + ', true, this)">對應</button> ' +
+            '<button class="mini-btn grey" style="margin-top:6px;" onclick="rlSave_(' + i + ', false, this)">都不是</button></div>';
+        }).join('');
+      const t = box.closest('.card') && box.closest('.card').querySelector('.section-title');
+      if (t) t.innerHTML = '📎　舊評論對應顧客' + (r.pending.length ? '<span class="count-pill red">待選 ' + r.pending.length + ' 筆</span>' : '');
+    }
+    function rlSave_(i, ok, btn) {
+      const x = rlData.pending[i];
+      btn.disabled = true;
+      api().withSuccessHandler(function (r) { renderRevLinks_(r); showToast(ok ? '✅ 已對應' : '已標記為都不是（不計次數）'); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .resolveReviewLink({ row: x.row, id: x.id, key: ok ? document.getElementById('rlSel' + i).value : '' });
+    }
+
     // ---------- 系統管理：分成 4 區、可以收合 ----------
     const ADMIN_GROUPS = [
       { k: 'imp', t: '📥 匯入報表', s: '📥 匯入', items: ['匯入櫃台日報', '匯入新客來源', '匯入品項日報', '匯入財務拆帳', '匯入 POS', '刀表同步', '匯入諮詢師舊', '最近的匯入'] },
-      { k: 'todo', t: '✅ 待處理／核對', s: '✅ 待處理', items: ['拆帳待處理', '課程剩餘量差異', '疑似重複', '修正消費紀錄', '補建顧客資料'] },
+      { k: 'todo', t: '✅ 待處理／核對', s: '✅ 待處理', items: ['拆帳待處理', '課程剩餘量差異', '疑似重複', '修正消費紀錄', '補建顧客資料', '舊評論對應顧客'] },
       { k: 'set', t: '⚙️ 設定', s: '⚙️ 設定', items: ['人員管理', '診所設定', '公休與國定假日', '部門設定', '療程細項', '療程大類', '關懷提醒設定', '非個人業績名稱', '測試顧客', '手術紀錄顯示設定', 'RFM'] },
       { k: 'sys', t: '📊 系統狀況', s: '📊 系統', items: ['人員上線狀況', '試算表容量', '年度封存', '操作紀錄'] }
     ];
@@ -4599,6 +4634,7 @@
         const pa = a.target.review ? a.rv / a.target.review : -1, pb = b.target.review ? b.rv / b.target.review : -1;
         return pb - pa || b.rv - a.rv;
       });
+      if (!d.deptHead) html += '<div id="reviewIssueCard"></div>';
       html += '<div class="card visible"><div class="section-title">⭐　Google 評論進度' +
         '<span style="font-size:15px; color:var(--text-muted);">合計 <b style="color:var(--text); font-size:19px;">' + s.rv + '</b>' +
         (t.review ? ' / ' + t.review : '') + ' 則</span></div>' +
@@ -4694,6 +4730,46 @@
       loadTakeoverCards_();
       loadCourseSummary_(d.scope);
       loadSplitPay_(d.monthKey, d.scope || '');
+      loadReviewIssues_(d.monthKey);
+    }
+
+    // ---------- ⭐ 評論待確認（同月同名，但 Google 帳號不同） ----------
+    let riMonth = '';
+    function loadReviewIssues_(month) {
+      riMonth = month;
+      api().withSuccessHandler(renderReviewIssues_).withFailureHandler(function () {}).getReviewIssues({ month: month });
+    }
+    function renderReviewIssues_(r) {
+      const box = document.getElementById('reviewIssueCard');
+      if (!box) return;
+      if (!r.list.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="card visible"><div class="section-title">⭐　Google 評論待確認<span class="count-pill red">⚠️ 待確認 ' + r.list.length + '</span></div>' +
+        '<div class="hint" style="margin-top:0;">同一個月同名（或同一位客人），但 Google 帳號不同。是不同人就按「確認是不同人」，兩筆都算；是重複登記就刪除其中一筆。</div>' +
+        r.list.map(function (g, gi) {
+          return '<div style="background:#FBE3E0; border-left:4px solid #C0392B; border-radius:10px; padding:10px 12px; margin-top:8px;">' +
+            '<div class="row-name">' + esc(g.name || '（未填姓名）') + '　<span style="font-weight:normal; font-size:13.5px;">同一個月同名，但 Google 帳號不同</span></div>' +
+            g.rows.map(function (x) {
+              return '<div class="row-meta" style="margin-top:6px;">' + esc(x.date) + '　' + esc(x.staff) + '　Google：' + esc(x.google) + (x.phone ? '　' + esc(x.phone) : '') +
+                '　<button class="mini-btn grey" style="padding:4px 10px;" data-row="' + x.row + '" data-id="' + esc(x.id) + '" onclick="riDelete_(this)">刪除這筆</button></div>';
+            }).join('') +
+            '<div style="margin-top:8px;"><button class="mini-btn" data-g="' + gi + '" onclick="riConfirm_(this)">確認是不同人（都算）</button></div></div>';
+        }).join('') + '</div>';
+      box._data = r;
+      pgHead_();
+    }
+    function riConfirm_(btn) {
+      const g = document.getElementById('reviewIssueCard')._data.list[Number(btn.dataset.g)];
+      btn.disabled = true;
+      api().withSuccessHandler(function (r) { renderReviewIssues_(r); showToast('✅ 已確認是不同人，兩筆都算'); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .confirmReviewIssue({ rows: g.rows.map(function (x) { return { row: x.row, id: x.id }; }), month: riMonth });
+    }
+    function riDelete_(btn) {
+      if (!confirm('確定刪除這筆評論登記？刪除後這筆不算。')) return;
+      btn.disabled = true;
+      api().withSuccessHandler(function () { showToast('已刪除'); perfStale = true; loadPerf(); })
+        .withFailureHandler(function (err) { btn.disabled = false; showToast(err.message); })
+        .deleteGoogleReview({ row: btn.dataset.row, id: btn.dataset.id, viewAs: '' });
     }
 
     // ---------- 🧮 疑似重複人次（同客人、同月、同大類有 2 筆以上訂金／全額） ----------
@@ -4911,7 +4987,7 @@
       team: [
         { k: 'today', t: '📅 今日與進度', s: '📅 今日', items: ['#dailyCard', '本月進度', '#clinicTargetCard'] },
         { k: 'people', t: '👥 人員', s: '👥 人員', items: ['諮詢師業績', '#targetCard'] },
-        { k: 'ana', t: '💰 業績分析', s: '💰 分析', items: ['各診所', '療程類別業績', '品項銷售', '付款結構', 'Google 評論進度', '行銷新客分析'] },
+        { k: 'ana', t: '💰 業績分析', s: '💰 分析', items: ['各診所', '療程類別業績', '品項銷售', '付款結構', '#reviewIssueCard', 'Google 評論進度', '行銷新客分析'] },
         { k: 'todo', t: '🧩 待處理', s: '🧩 待處理', items: ['對帳', '業績異動', '#unassignedCard', '#takeoverCard', '#splitPayCard', '#courseSumCard'] },
         { k: 'rep', t: '📄 月報', s: '📄 月報', items: ['（Excel）'] }
       ]
@@ -4988,6 +5064,7 @@
           const sp = pill(b, '疑似重複人次');
           if (sp) out.push('人次待確認 ' + sp);
         }
+        if (k === 'ana') { const n = pill(b, '評論待確認'); if (n) out.push('⚠️ 評論待確認 ' + n); }
         w.querySelector('.pg-badge').textContent = out.join('　');
       });
       document.querySelectorAll('#perfBody .ag-nav button').forEach(function (btn) {
@@ -5029,16 +5106,19 @@
       if (rv.target) h += '<div class="progress" style="margin-bottom:10px;"><div style="width:' + Math.min(rv.count / rv.target * 100, 100) + '%"></div></div>';
       h += '<button type="button" class="add-item-btn" style="margin-top:0;" onclick="togglePerfReview()">＋ 客人留了評論，登記一則</button>' +
         '<div id="perfReviewForm" class="sub-panel" style="display:none;">' +
-          '<div class="row-2"><div><label style="margin-top:0;">顧客姓名</label><input type="text" id="prCustomer"></div>' +
-          '<div><label style="margin-top:0;">評論日期</label><input type="date" id="prDate"></div></div>' +
-          '<label>Google 上的顯示名稱</label><input type="text" id="prGoogleName" placeholder="方便主管核對">' +
+          '<label style="margin-top:0;">顧客（打姓名或手機搜尋）<span style="color:#C0392B;">＊</span></label>' +
+          '<input type="text" id="prCustomer" autocomplete="off" placeholder="例如：王小美 或 0912" oninput="prSearch_(this.value)">' +
+          '<div id="prResults"></div><div id="prPicked"></div>' +
+          '<div class="row-2"><div><label>Google 顯示名稱 <span style="color:#C0392B;">＊</span></label><input type="text" id="prGoogleName" placeholder="必填"></div>' +
+          '<div><label>評論日期</label><input type="date" id="prDate"></div></div>' +
           '<label>備註</label><input type="text" id="prNote" placeholder="選填">' +
           '<button type="button" class="primary-btn" id="prBtn" style="margin-top:12px; box-shadow:none;" onclick="submitPerfReview()"><span>登記評論</span></button>' +
         '</div>';
       if (rv.list.length) {
         h += '<div class="group-title">本月已登記</div>' + rv.list.map(function (r) {
-          return '<div class="row-item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><div>' +
-            '<div class="row-name" style="font-size:15.5px;">' + esc(r.customer || r.googleName) + '</div>' +
+          return '<div class="row-item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;' + (r.flag ? ' background:#FBE3E0; border-left:4px solid #C0392B; border-radius:8px; padding:8px 10px;' : '') + '"><div>' +
+            '<div class="row-name" style="font-size:15.5px;">' + esc(r.customer || r.googleName) +
+              (r.flag ? ' <span style="font-size:12.5px; background:#C0392B; color:#fff; border-radius:999px; padding:2px 8px; vertical-align:2px;">⚠️ 同名不同帳號，待主管確認</span>' : '') + '</div>' +
             '<div class="row-meta">' + esc(r.date) + (r.googleName && r.customer ? '　Google：' + esc(r.googleName) : '') + '</div></div>' +
             (r.canDelete ? '<button class="mini-btn grey" data-row="' + r.row + '" data-id="' + esc(r.id) + '" onclick="undoReview(this)">' + (perfUser && perfUser.admin ? '刪除' : '撤回') + '</button>' : '') +
             '</div>';
@@ -5050,7 +5130,17 @@
     function togglePerfReview() {
       const f = document.getElementById('perfReviewForm');
       f.style.display = f.style.display === 'none' ? 'block' : 'none';
-      document.getElementById('prDate').value = localDateStr();
+      reviewDateLimit_('prDate');
+    }
+    // 評論日期：人員只能選本月 1 號～今天；主管、管理員可以補登上個月
+    function reviewDateLimit_(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const now = new Date();
+      const start = (perfUser && perfUser.admin) ? new Date(now.getFullYear(), now.getMonth() - 1, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
+      el.min = localDateStr(start);
+      el.max = localDateStr(now);
+      el.value = localDateStr(now);
     }
 
     function sendReview_(payload, btn, label, done) {
@@ -5072,9 +5162,53 @@
         .logGoogleReview(Object.assign({ viewAs: viewAs }, payload));
     }
 
+    function reviewDateOk_(id) {
+      const el = document.getElementById(id), v = el.value;
+      if (!el.min) reviewDateLimit_(id);
+      if (v && v >= el.min && v <= el.max) return true;
+      showToast(v > el.max ? '評論日期不能選今天以後' : (perfUser && perfUser.admin) ? '主管只能補登上個月的評論' : '評論日期只能是本月，上個月的請找主管登記');
+      return false;
+    }
+    // ---------- 登記評論：選顧客（2 年內最多 2 次） ----------
+    let prSel = null, prList = [], prTimer = null;
+    function prSearch_(v) {
+      prSel = null;
+      document.getElementById('prPicked').innerHTML = '';
+      clearTimeout(prTimer);
+      const box = document.getElementById('prResults');
+      if (!String(v).trim()) { box.innerHTML = ''; return; }
+      prTimer = setTimeout(function () {
+        box.innerHTML = '<div class="row-meta" style="padding:6px 2px;">搜尋中...</div>';
+        api().withSuccessHandler(function (list) {
+          if (document.getElementById('prCustomer').value !== v) return;   // 已經改打別的字
+          prList = list;
+          box.innerHTML = list.length ? '<div style="border:1px solid var(--border); border-radius:10px; margin-top:4px; background:#fff; overflow:hidden;">' +
+            list.map(function (c, i) {
+              return '<div onclick="prPick_(' + i + ')" style="padding:9px 12px; border-bottom:1px solid var(--border); cursor:' + (c.full ? 'not-allowed; color:#aaa;' : 'pointer;') + '">' +
+                '<b>' + esc(c.name) + '</b>　' + esc(c.phone) + '　' + esc(c.branch) +
+                '<span style="float:right; font-size:13px; color:' + (c.full ? '#C0392B' : c.used ? '#3F5A35' : 'var(--text-muted)') + ';">' +
+                (c.full ? '已滿 2 次，不能登記' : '已登記 ' + c.used + '／2 次') + '</span></div>';
+            }).join('') + '</div>' : '<div class="row-meta" style="padding:6px 2px;">找不到這位客人，請先到「建檔／消費」建檔。</div>';
+        }).withFailureHandler(function (err) { box.innerHTML = '<div class="row-meta">' + esc(err.message) + '</div>'; }).searchReviewCustomers(v);
+      }, 350);
+    }
+    function prPick_(i) {
+      const c = prList[i];
+      if (!c) return;
+      if (c.full) { showToast('這位客人 2 年內已登記 2 次（' + c.prev.join('、') + '），不能再登記'); return; }
+      prSel = c;
+      document.getElementById('prCustomer').value = c.name;
+      document.getElementById('prResults').innerHTML = '';
+      document.getElementById('prPicked').innerHTML = '<div style="margin-top:8px; padding:8px 12px; border-radius:10px; background:#EEF5E9;">✅ 已選：<b>' + esc(c.name) + '</b>　' + esc(c.phone) +
+        (c.used ? '（2 年內已登記 ' + c.used + ' 次：' + esc(c.prev.join('、')) + '）' : '（2 年內還沒登記過）') + '</div>';
+    }
     function submitPerfReview() {
+      if (!prSel) { showToast('請從清單選擇顧客'); return; }
+      if (!reviewDateOk_('prDate')) return;
+      if (!document.getElementById('prGoogleName').value.trim()) { showToast('請填 Google 上的顯示名稱'); return; }
       sendReview_({
-        customer: document.getElementById('prCustomer').value,
+        custKey: prSel.key,
+        customer: prSel.name,
         googleName: document.getElementById('prGoogleName').value,
         date: document.getElementById('prDate').value,
         note: document.getElementById('prNote').value
@@ -5084,15 +5218,18 @@
     function toggleEntryReview() {
       const p = document.getElementById('entryReviewPanel');
       p.style.display = p.style.display === 'none' ? 'block' : 'none';
-      document.getElementById('erDate').value = localDateStr();
+      reviewDateLimit_('erDate');
       if (p.style.display === 'block') p.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function submitEntryReview() {
       if (!selectedCustomer) { showToast('請先確認顧客'); return; }
+      if (!document.getElementById('erGoogleName').value.trim()) { showToast('請填 Google 上的顯示名稱'); return; }
+      if (!reviewDateOk_('erDate')) return;
       sendReview_({
         customer: selectedCustomer.name,
         phone: selectedCustomer.phone,
+        custKey: /^09\d{8}$/.test(selectedCustomer.phone || '') ? selectedCustomer.phone : (selectedCustomer.custKey || ''),
         googleName: document.getElementById('erGoogleName').value,
         date: document.getElementById('erDate').value,
         note: document.getElementById('erNote').value
